@@ -1,0 +1,10 @@
+# Binaries
+/api
+*.test
+
+# Config
+api.yml
+api.yaml
+
+# Notes
+TODO*
