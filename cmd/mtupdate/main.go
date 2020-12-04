@@ -153,34 +153,6 @@ func writes(sch ucm.Schedule) error {
 	return nil
 }
 
-func getSchema(v interface{}) []string {
-	var schema []string
-	ty := reflect.TypeOf(v)
-	if ty.Kind() == reflect.Ptr {
-		ty = ty.Elem()
-	}
-Outer:
-	for i := 0; i < ty.NumField(); i++ {
-		fld := ty.Field(i)
-		var tag string
-		for _, t := range []string{"db", "json", "csv"} {
-			tag = fld.Tag.Get(t)
-			if tag == "-" {
-				continue Outer
-			}
-			if tag != "" {
-				break
-			}
-		}
-		if tag != "" {
-			schema = append(schema, tag)
-		} else {
-			schema = append(schema, fld.Name)
-		}
-	}
-	return schema
-}
-
 const (
 	dateformat = time.RFC3339
 	timeformat = "15:04:05"

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -31,7 +32,7 @@ func courseTable(crs []*ucm.Course) error {
 	}
 	defer f.Close()
 	w := csv.NewWriter(f)
-	// if err = w.Write(getSchema(models.Course{})); err != nil {
+	// if err = w.Write(models.GetSchema(models.Course{})); err != nil {
 	// 	return err
 	// }
 	var (
@@ -69,7 +70,7 @@ func lecturesTable(
 	defer f.Close()
 	lectures := make(map[int]*ucm.Course)
 	w := csv.NewWriter(f)
-	// if err = w.Write(getSchema(models.Lect{})); err != nil {
+	// if err = w.Write(models.GetSchema(models.Lect{})); err != nil {
 	// 	return nil, err
 	// }
 
@@ -122,7 +123,7 @@ func labsDiscTable(sch ucm.Schedule, instructors map[string]*instructorMeta) err
 	}
 	defer f.Close()
 	w := csv.NewWriter(f)
-	// if err = w.Write(getSchema(models.LabDisc{})); err != nil {
+	// if err = w.Write(models.GetSchema(models.LabDisc{})); err != nil {
 	// 	return err
 	// }
 	for _, c := range sch.Ordered() {
@@ -172,7 +173,7 @@ func examsTable(crs []*ucm.Course) error {
 	}
 	defer f.Close()
 	w := csv.NewWriter(f)
-	if err = w.Write(getSchema(models.Exam{})); err != nil {
+	if err = w.Write(models.GetSchema(models.Exam{})); err != nil {
 		return err
 	}
 	for _, c := range crs {
@@ -206,9 +207,6 @@ func enrollmentTable(crs []*ucm.Course) error {
 		workers = 200
 		courses = make(chan *ucm.Course)
 	)
-	// if err = w.Write(getSchema(models.Enrollment{})); err != nil {
-	// 	return err
-	// }
 
 	go func() {
 		for _, c := range crs {
@@ -223,7 +221,7 @@ func enrollmentTable(crs []*ucm.Course) error {
 			for c := range courses {
 				desc, err := c.Info()
 				if err != nil {
-					fmt.Println("Error:", err)
+					log.Println("Error:", err)
 					return
 				}
 				row := [...]string{
@@ -237,7 +235,7 @@ func enrollmentTable(crs []*ucm.Course) error {
 				err = w.Write(row[:])
 				mu.Unlock()
 				if err != nil {
-					fmt.Println("Error:", err)
+					log.Println("Error:", err)
 				}
 			}
 		}()
@@ -258,7 +256,7 @@ func writeInstructorTable(crs []*ucm.Course) (map[string]*instructorMeta, error)
 		instructors = getInstructors(crs)
 		maxname     = 0
 	)
-	if err = w.Write(getSchema(models.Instructor{})); err != nil {
+	if err = w.Write(models.GetSchema(models.Instructor{})); err != nil {
 		return nil, err
 	}
 	for _, inst := range instructors {

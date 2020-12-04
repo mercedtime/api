@@ -1,11 +1,41 @@
 package models
 
 import (
+	"reflect"
 	"time"
 )
 
 //go:generate mkdir -p ../data
 //go:generate go run ../../cmd/mtupdate -csv -out=../data
+
+// GetSchema will get the database schema from a struct
+func GetSchema(v interface{}) []string {
+	var schema []string
+	ty := reflect.TypeOf(v)
+	if ty.Kind() == reflect.Ptr {
+		ty = ty.Elem()
+	}
+Outer:
+	for i := 0; i < ty.NumField(); i++ {
+		fld := ty.Field(i)
+		var tag string
+		for _, t := range []string{"db", "json", "csv"} {
+			tag = fld.Tag.Get(t)
+			if tag == "-" {
+				continue Outer
+			}
+			if tag != "" {
+				break
+			}
+		}
+		if tag != "" {
+			schema = append(schema, tag)
+		} else {
+			schema = append(schema, fld.Name)
+		}
+	}
+	return schema
+}
 
 // Lect is a lecture
 type Lect struct {
