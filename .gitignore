@@ -5,6 +5,12 @@
 # Config
 api.yml
 api.yaml
+*env
 
 # Notes
 TODO*
+
+# Data
+*.sqlite
+*.db
+*.csv
