@@ -3,10 +3,12 @@ module github.com/mercedtime/api
 go 1.15
 
 require (
+	github.com/doug-martin/goqu/v9 v9.10.0
 	github.com/gin-gonic/gin v1.6.3
 	github.com/go-playground/validator/v10 v10.4.1 // indirect
 	github.com/golang/protobuf v1.4.3 // indirect
 	github.com/harrybrwn/config v0.1.0
+	github.com/harrybrwn/edu v0.0.4-0.20201204020746-c85991583934
 	github.com/json-iterator/go v1.1.10 // indirect
 	github.com/lib/pq v1.9.0
 	github.com/mattn/go-sqlite3 v1.14.5
