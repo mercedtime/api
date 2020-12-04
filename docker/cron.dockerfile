@@ -12,6 +12,7 @@ COPY ./db/cron/root /etc/crontabs/root
 RUN chown root /etc/crontabs/root
 RUN chmod 0600 /etc/crontabs/root
 
+# -d - 0 is verbose, 8 is silent
 CMD ["crond", "-f", "-l", "0", "-d", "0"]
 
 # vim: ft=dockerfile
