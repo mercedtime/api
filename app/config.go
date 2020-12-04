@@ -12,7 +12,7 @@ import (
 
 // Config is the application config struct
 type Config struct {
-	Host string `config:"host" default:"localhost"`
+	Host string `config:"host" default:"0.0.0.0"`
 	Port int64  `config:"port" default:"8080"`
 	Mode string `config:"mode" default:"debug"`
 
@@ -21,7 +21,7 @@ type Config struct {
 		Host     string `config:"host" default:"localhost"`
 		Port     int    `config:"port" default:"5432"`
 		User     string `config:"user"`
-		Password string `config:"password" env:"MT_PASSWORD"`
+		Password string `config:"password" env:"POSTGRES_PASSWORD"`
 		// Database name or database filename
 		Name string `config:"name"`
 	} `config:"database"`
@@ -69,8 +69,11 @@ func (c *Config) GetDSN() string {
 			config.GetString("database.password"),
 			config.GetString("database.name"),
 		)
-	case "sqlite":
-		return fmt.Sprintf("sqlite:///%s", db.Name)
+	case "sqlite3":
+		if !exists(db.Name) {
+			return fmt.Sprintf("file:%s.sqlite", db.Name)
+		}
+		return fmt.Sprintf("file:%s", db.Name)
 	default:
 		panic(fmt.Sprintf("unknown database driver %s\n", db.Driver))
 	}
@@ -81,4 +84,9 @@ func Address() string {
 	return net.JoinHostPort(
 		config.GetString("host"),
 		strconv.FormatInt(int64(config.GetInt("port")), 10))
+}
+
+func exists(f string) bool {
+	_, err := os.Stat(f)
+	return !os.IsNotExist(err)
 }
