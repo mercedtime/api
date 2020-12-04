@@ -59,6 +59,12 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
 
+	r.NoRoute(func(c *gin.Context) {
+		c.JSON(404, map[string]interface{}{
+			"error": "no route for " + c.Request.URL.Path,
+		})
+	})
+
 	r.GET("/lectures", lectures(db))
 	r.GET("/lecture/:crn", lecture(db))
 	r.GET("/lecture/:crn/exam", exam(db))
