@@ -57,9 +57,6 @@ type Scanable interface {
 	Scan(...interface{}) error
 }
 
-// LectColumns is all the columns in Lect
-const LectColumns = `crn,course_num,title,units,activity,days,start_time,end_time,start_date,end_date,instructor_id`
-
 // Default date and time formats
 var (
 	TimeFormat = time.RFC3339
@@ -179,6 +176,7 @@ func (l *LabDisc) Scan(sc Scanable) error {
 	var stime, etime string
 	err := sc.Scan(
 		&l.CRN,
+		&l.CourseCRN,
 		&l.CourseNum,
 		&l.Section,
 		&l.Title,

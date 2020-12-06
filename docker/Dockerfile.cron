@@ -1,0 +1,24 @@
+FROM golang:1.15-alpine as builder
+
+COPY go.mod /app/tmp/go.mod
+COPY go.sum /app/tmp/go.sum
+WORKDIR /app/tmp
+RUN go mod download
+
+COPY . /app/src
+WORKDIR /app/src
+RUN mkdir -p /app/bin
+
+RUN go build -o /app/bin/mtupdate ./cmd/mtupdate
+
+FROM alpine:latest
+COPY --from=builder /app/bin/mtupdate /app/bin/mtupdate
+WORKDIR /app
+
+RUN rm /etc/crontabs/root
+COPY --from=builder /app/src/db/cron/root /etc/crontabs/root
+RUN chown root /etc/crontabs/root
+RUN chmod 0600 /etc/crontabs/root
+
+# -d - 0 is verbose, 8 is silent
+CMD ["crond", "-f", "-l", "2", "-d", "2"]

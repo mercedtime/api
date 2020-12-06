@@ -1,0 +1,21 @@
+# Data files
+*.csv
+*.db
+*.sqlite
+*.sql
+
+# Binaries
+/api
+/mtupdate
+
+# Misc
+/.git
+/db/sql/
+/.dockerignore
+/.gitignore
+/Makefile*
+/TODO*
+Dockerfile*
+*.md
+
+/!README.md

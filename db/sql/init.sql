@@ -14,6 +14,8 @@ CREATE TABLE course (
     subject    VARCHAR(4),
     course_num INTEGER,
     type       VARCHAR(4),
+
+    auto_updated INTEGER DEFAULT 0,
     PRIMARY KEY(crn)
 );
 
@@ -30,7 +32,9 @@ CREATE TABLE enrollment (
     description TEXT,
     capacity    INTEGER,
     enrolled    INTEGER,
-    remaining   INTEGER
+    remaining   INTEGER,
+
+    auto_updated INTEGER DEFAULT 0
 );
 
 CREATE TABLE instructor (
@@ -46,13 +50,14 @@ CREATE TABLE lectures (
     Title      VARCHAR(1024),
     units      INTEGER,
     activity   VARCHAR(4),
-    days       TEXT,
+    days       TEXT DEFAULT '',
     start_time TIME,
     end_time   TIME,
     start_date DATE,
     end_date   DATE,
     instructor_id INTEGER,
 
+    auto_updated INTEGER DEFAULT 0,
     FOREIGN KEY (instructor_id) REFERENCES instructor (id)
 );
 
@@ -65,12 +70,13 @@ CREATE TABLE Labs_Discussions (
     Title      VARCHAR(1024),
     units      INTEGER,
     activity   VARCHAR(4),
-    days       TEXT,
+    days       TEXT DEFAULT '',
     start_time TIME,
     end_time   TIME,
     building_room TEXT,
     instructor_id INT,
 
+    auto_updated INTEGER DEFAULT 0,
     FOREIGN KEY (instructor_id) REFERENCES instructor (id)
 );
 

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/doug-martin/goqu/v9"
@@ -12,15 +14,92 @@ import (
 	"github.com/mercedtime/api/db/models"
 )
 
-func updateEnrollment(db *sql.DB, crs []*ucm.Course) (err error) {
+var mustAlsoRegex = regexp.MustCompile(`Must Also.*$`)
+
+func cleanTitle(title string) string {
+	title = mustAlsoRegex.ReplaceAllString(title, "")
+	title = strings.Replace(title, "Class is fully online", ": Class is fully online", -1)
+	title = strings.Replace(title, "*Lab and Discussion Section Numbers Do Not Have to Match*", "", -1)
+	return title
+}
+
+type execable interface {
+	Exec(string, ...interface{}) (sql.Result, error)
+}
+
+func createTmpTable(from string, tx execable, tmp string, rows []interface{}) (drop func() error, err error) {
+	var q string
+	drop = func() error {
+		_, e := tx.Exec("DROP TABLE " + tmp)
+		return e
+	}
+	_, err = tx.Exec("SELECT * INTO " + tmp + " FROM " + from + " LIMIT 0")
+	if err != nil {
+		return
+	}
+	q, _, err = goqu.Insert(tmp).Rows(rows).ToSQL()
+	if err != nil {
+		return
+	}
+	if _, err = tx.Exec(q); err != nil {
+		return
+	}
+	return drop, nil
+}
+
+func updateEnrollmentCounts(db *sql.DB, crs []*ucm.Course) (err error) {
+	var (
+		tmpTable = "_tmp_enrollments"
+		rows     = make([]interface{}, 0)
+	)
+	for _, c := range crs {
+		rows = append(rows, &models.Enrollment{
+			CRN:       c.CRN,
+			Capacity:  c.Capacity,
+			Enrolled:  c.Enrolled,
+			Remaining: c.SeatsOpen(),
+		})
+	}
+	if err != nil {
+		return err
+	}
+	droptmp, err := createTmpTable("enrollment", db, tmpTable, rows)
+	defer func() {
+		e := droptmp()
+		if e != nil && err == nil {
+			err = e
+		}
+	}()
+	if err != nil {
+		return err
+	}
+	q := `
+UPDATE Enrollment
+SET
+	capacity    = tmp.capacity,
+	enrolled    = tmp.enrolled,
+	remaining   = tmp.remaining,
+	auto_updated = 1
+FROM _tmp_enrollments tmp
+WHERE Enrollment.CRN = tmp.CRN`
+	_, err = db.Exec(q)
+	if err != nil {
+		return err
+	}
+	return err
+}
+
+func updateEnrollment(db *sql.DB, crs []*ucm.Course, outerWg *sync.WaitGroup) (err error) {
 	var (
 		workers     = 300
 		wg          sync.WaitGroup
 		rows        = make([]interface{}, 0)
 		courses     = make(chan *ucm.Course)
 		enrollments = make(chan *models.Enrollment)
-		insert      = goqu.Insert("_tmp_enrollments")
+		tmpTable    = "_tmp_enrollments"
+		insert      = goqu.Insert(tmpTable)
 	)
+	defer outerWg.Done()
 	// Create the temp table
 	go func() {
 		for _, c := range crs {
@@ -78,7 +157,8 @@ SET
 	description = tmp.description,
 	capacity    = tmp.capacity,
 	enrolled    = tmp.enrolled,
-	remaining   = tmp.remaining
+	remaining   = tmp.remaining,
+	auto_updated = 1
 FROM _tmp_enrollments tmp
 WHERE Enrollment.CRN = tmp.CRN`
 	_, err = db.Exec(q)
@@ -94,8 +174,7 @@ func updateLectureTable(
 	instructors map[string]*instructorMeta,
 ) (err error) {
 	var (
-		insert       = goqu.Insert("_tmp_lectures")
-		rows         = make([]map[string]interface{}, 0, len(crs))
+		rows         = make([]interface{}, 0, len(crs))
 		instructorID = 0
 	)
 
@@ -120,7 +199,7 @@ func updateLectureTable(
 		m := map[string]interface{}{
 			"crn":           c.CRN,
 			"course_num":    c.Number,
-			"title":         c.Title,
+			"title":         cleanTitle(c.Title),
 			"units":         c.Units,
 			"activity":      c.Activity,
 			"days":          str(c.Days),
@@ -129,6 +208,7 @@ func updateLectureTable(
 			"start_date":    c.Date.Start.Format(dateformat),
 			"end_date":      c.Date.End.Format(dateformat),
 			"instructor_id": instructorID,
+			"auto_updated":  0,
 		}
 		rows = append(rows, m)
 	}
@@ -139,12 +219,9 @@ func updateLectureTable(
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec("SELECT * INTO _tmp_lectures FROM Lectures LIMIT 0")
-	if err != nil {
-		return err
-	}
+	droptmp, err := createTmpTable("Lectures", tx, "_tmp_lectures", rows)
 	defer func() {
-		_, e := tx.Exec("DROP TABLE _tmp_lectures")
+		e := droptmp()
 		if e != nil && err == nil {
 			err = e
 		}
@@ -152,15 +229,11 @@ func updateLectureTable(
 			err = tx.Commit()
 		}
 	}()
-	q, _, err := insert.Rows(rows).ToSQL()
 	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(q); err != nil {
-		return err
-	}
 	// New lectures
-	q = `
+	q := `
 	INSERT INTO Lectures
 	SELECT * FROM _tmp_lectures tmp
 	WHERE NOT EXISTS (
@@ -181,7 +254,8 @@ SET
   end_time      = new.end_time,
   start_date    = new.start_date,
   end_date      = new.end_date,
-  instructor_id = new.instructor_id
+  instructor_id = new.instructor_id,
+  auto_updated = 1
 FROM (
   SELECT * FROM _tmp_lectures tmp
   WHERE NOT EXISTS (
@@ -203,11 +277,77 @@ FROM (
 	return err
 }
 
-func updateLabsTable(db *sql.DB, sch ucm.Schedule, instructors map[string]*instructorMeta) (err error) {
+func updateCourseTable(db *sql.DB, crs []*ucm.Course) error {
 	var (
-		insert = goqu.Insert("_tmp_labs")
-		rows   = make([]interface{}, 0, len(sch))
+		target   = "course"
+		tmpTable = "_tmp_course"
+		rows     = make([]interface{}, 0, len(crs))
 	)
+	for _, c := range crs {
+		m := map[string]interface{}{
+			"crn":        c.CRN,
+			"subject":    c.Subject,
+			"course_num": c.CourseNumber(),
+			"type":       c.Activity,
+		}
+		rows = append(rows, m)
+	}
+	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
+		Isolation: sql.LevelDefault,
+		ReadOnly:  false,
+	})
+	if err != nil {
+		return err
+	}
+	droptmp, err := createTmpTable(target, tx, tmpTable, rows)
+	defer func() {
+		e := droptmp()
+		if e != nil && err == nil {
+			err = e
+		}
+		if err == nil {
+			err = tx.Commit()
+		}
+	}()
+	if err != nil {
+		return err
+	}
+
+	// New values
+	q := "INSERT INTO " + target + `
+	SELECT * FROM ` + tmpTable + ` tmp
+	WHERE NOT EXISTS (
+	  SELECT * FROM ` + target + ` c
+	  WHERE c.CRN = tmp.CRN
+	)`
+	if _, err = tx.Exec(q); err != nil {
+		return err
+	}
+	q = `
+UPDATE ` + target + `
+SET
+  subject = new.subject,
+  course_num = new.course_num,
+  type = new.type,
+  auto_updated = 1
+FROM (
+  SELECT * FROM ` + tmpTable + ` tmp
+  WHERE NOT EXISTS (
+    SELECT * FROM ` + target + ` l
+	WHERE
+	  tmp.subject = l.subject AND
+	  tmp.course_num = l.course_num AND
+	  tmp.type = l.type
+  )
+) new WHERE ` + target + `.crn = new.crn`
+	if _, err = tx.Exec(q); err != nil {
+		return err
+	}
+	return err
+}
+
+func updateLabsTable(db *sql.DB, sch ucm.Schedule, instructors map[string]*instructorMeta) (err error) {
+	var rows = make([]interface{}, 0, len(sch))
 	for _, c := range sch.Ordered() {
 		if c.Activity == Lecture {
 			continue
@@ -239,6 +379,7 @@ func updateLabsTable(db *sql.DB, sch ucm.Schedule, instructors map[string]*instr
 			"end_time":      c.Time.End.Format(timeformat),
 			"building_room": c.BuildingRoom,
 			"instructor_id": instructorID,
+			"auto_updated":  "0",
 		}
 		rows = append(rows, m)
 	}
@@ -249,12 +390,9 @@ func updateLabsTable(db *sql.DB, sch ucm.Schedule, instructors map[string]*instr
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec("SELECT * INTO _tmp_labs FROM Labs_Discussions LIMIT 0")
-	if err != nil {
-		return err
-	}
+	droptmp, err := createTmpTable("Labs_Discussions", tx, "_tmp_labs", rows)
 	defer func() {
-		_, e := tx.Exec("DROP TABLE _tmp_labs")
+		e := droptmp()
 		if e != nil && err == nil {
 			err = e
 		}
@@ -262,14 +400,11 @@ func updateLabsTable(db *sql.DB, sch ucm.Schedule, instructors map[string]*instr
 			err = tx.Commit()
 		}
 	}()
-	q, _, err := insert.Rows(rows...).ToSQL()
 	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(q); err != nil {
-		return err
-	}
-	q = `
+
+	q := `
 	INSERT INTO Labs_Discussions
 	SELECT * FROM _tmp_labs tmp
 	WHERE NOT EXISTS (
@@ -288,7 +423,8 @@ SET
   start_time = new.start_time,
   end_time   = new.end_time,
   building_room = new.building_room,
-  instructor_id = new.instructor_id
+  instructor_id = new.instructor_id,
+  auto_updated = 1
 FROM (
   SELECT * FROM _tmp_labs tmp
   WHERE NOT EXISTS (
@@ -313,32 +449,40 @@ FROM (
 func updateInstructorsTable(db *sql.DB, instructors map[string]*instructorMeta) (err error) {
 	var (
 		rows = make([]interface{}, 0, len(instructors))
-		up   = goqu.Insert("tmp_inst")
+		// up   = goqu.Insert("tmp_inst")
 	)
-	_, err = db.Exec("SELECT * INTO tmp_inst FROM instructor LIMIT 0")
-	if err != nil {
-		return err
-	}
-	defer func() { db.Exec("DROP TABLE tmp_inst") }()
 	for _, inst := range instructors {
 		rows = append(rows, models.Instructor{ID: inst.id, Name: inst.name})
 	}
-	q, _, err := up.Rows(rows...).ToSQL()
+	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
+		Isolation: sql.LevelDefault,
+		ReadOnly:  false,
+	})
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec(q)
+	droptmp, err := createTmpTable("instructor", tx, "tmp_inst", rows)
+	defer func() {
+		e := droptmp()
+		if e != nil && err == nil {
+			err = e
+		}
+		if err == nil {
+			err = tx.Commit()
+		}
+	}()
 	if err != nil {
 		return err
 	}
+
 	// new instructors
-	q = `
+	q := `
 	INSERT INTO instructor
 	SELECT * FROM tmp_inst tmp
 	WHERE NOT EXISTS (
 	  SELECT * FROM instructor l WHERE l.id = tmp.id
 	)`
-	if _, err = db.Exec(q); err != nil {
+	if _, err = tx.Exec(q); err != nil {
 		return err
 	}
 	return nil

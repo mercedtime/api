@@ -24,6 +24,7 @@ type Config struct {
 		Password string `config:"password" env:"POSTGRES_PASSWORD"`
 		// Database name or database filename
 		Name string `config:"name"`
+		SSL  string `config:"ssl" default:"disable"`
 	} `config:"database"`
 }
 
@@ -42,6 +43,7 @@ func (c *Config) Init() error {
 
 	flag.StringVar(&c.Database.User, "user", c.Database.User, "database username")
 	flag.StringVar(&c.Database.Password, "pw", c.Database.Password, "database user password")
+	flag.StringVar(&c.Database.SSL, "db-ssl", c.Database.SSL, "toggle database ssl")
 
 	flag.SortFlags = false
 	switch err := flag.Parse(os.Args[1:]); err {
@@ -62,12 +64,13 @@ func (c *Config) GetDSN() string {
 	switch db.Driver {
 	case "postgres":
 		return fmt.Sprintf(
-			"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-			config.GetString("database.host"),
-			config.GetInt("database.port"),
-			config.GetString("database.user"),
-			config.GetString("database.password"),
-			config.GetString("database.name"),
+			"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+			db.Host,
+			db.Port,
+			db.User,
+			db.Password,
+			db.Name,
+			db.SSL,
 		)
 	case "sqlite3":
 		if !exists(db.Name) {

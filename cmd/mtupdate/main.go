@@ -33,12 +33,14 @@ func main() {
 		password  string
 		host      string = "localhost"
 		port      string = "5432"
+		desc             = false
 	)
 	flag.StringVar(&password, "password", password, "give postgres a password")
 	flag.StringVar(&host, "host", host, "specify the database host")
 	flag.StringVar(&port, "port", port, "specify the database port")
 	flag.BoolVar(&dbOpsOnly, "db", dbOpsOnly, "only perform database updates")
 	flag.BoolVar(&csvOps, "csv", csvOps, "write the tables to csv files")
+	flag.BoolVar(&desc, "desc", desc, "update course descriptions (takes longer)")
 	flag.Parse()
 
 	if !dbOpsOnly && !csvOps {
@@ -71,7 +73,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := updates(os.Stdout, db, sch)
+			err := updates(os.Stdout, db, sch, desc)
 			if err != nil {
 				log.Fatal("DB Error:", err)
 			}
@@ -100,56 +102,99 @@ func main() {
 	fmt.Println()
 }
 
-func updates(w io.Writer, db *sql.DB, sch ucm.Schedule) (err error) {
+func updates(w io.Writer, db *sql.DB, sch ucm.Schedule, desc bool) (err error) {
+	var wg sync.WaitGroup
 	courses := sch.Ordered()
 	inst := getInstructors(courses)
+	if desc {
+		wg.Add(1)
+		go updateEnrollment(db, sch.Ordered(), &wg)
+	} else {
+		err = updateEnrollmentCounts(db, courses)
+		if err != nil {
+			return err
+		}
+	}
+
+	t := time.Now()
 	fmt.Fprintf(w, "[%s] lectures:", time.Now().Format(time.Stamp))
 	err = updateLectureTable(db, courses, inst)
 	if err != nil {
+		log.Println(err)
 		return err
 	}
-	fmt.Fprint(w, "ok|labs:")
+	fmt.Fprintf(w, "%v ok|labs:", time.Now().Sub(t))
 	err = updateLabsTable(db, sch, inst)
 	if err != nil {
+		log.Println(err)
 		return err
 	}
-	fmt.Fprint(w, "ok|instructor:")
+	fmt.Fprintf(w, "%v ok|instructor:", time.Now().Sub(t))
 	err = updateInstructorsTable(db, inst)
 	if err != nil {
+		log.Println(err)
 		return err
 	}
-	fmt.Fprint(w, "ok|enrollments:")
-	err = updateEnrollment(db, courses)
-	if err != nil {
+	fmt.Fprintf(w, "%v ok|course:", time.Now().Sub(t))
+	if err = updateCourseTable(db, courses); err != nil {
+		log.Println(err)
 		return err
 	}
-	fmt.Fprint(w, "ok|")
+	fmt.Fprintf(w, "%v ok|enrollments:", time.Now().Sub(t))
+
+	wg.Wait()
+	fmt.Fprintf(w, "%v ok|", time.Now().Sub(t))
 	return nil
 }
 
 func writes(sch ucm.Schedule) error {
 	courses := sch.Ordered()
-	err := courseTable(courses)
-	if err != nil {
-		return err
-	}
+	var (
+		err error
+		wg  sync.WaitGroup
+	)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := courseTable(courses)
+		if err != nil {
+			log.Println(err)
+		}
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err = examsTable(courses); err != nil {
+			log.Println(err)
+		}
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err = enrollmentTable(courses); err != nil {
+			log.Println(err)
+		}
+	}()
 	inst, err := writeInstructorTable(sch.Ordered())
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
-	_, err = lecturesTable(courses, inst)
-	if err != nil {
-		return err
-	}
-	if err = labsDiscTable(sch, inst); err != nil {
-		return err
-	}
-	if err = examsTable(courses); err != nil {
-		return err
-	}
-	if err = enrollmentTable(courses); err != nil {
-		return err
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, err = lecturesTable(courses, inst)
+		if err != nil {
+			log.Println(err)
+		}
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err = labsDiscTable(sch, inst); err != nil {
+			log.Println(err)
+		}
+	}()
+	wg.Wait()
 	return nil
 }
 

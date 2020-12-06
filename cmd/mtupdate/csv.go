@@ -12,7 +12,6 @@ import (
 	"sync"
 
 	"github.com/harrybrwn/edu/school/ucmerced/ucm"
-	"github.com/mercedtime/api/db/models"
 )
 
 var csvOutDir = "data"
@@ -32,9 +31,6 @@ func courseTable(crs []*ucm.Course) error {
 	}
 	defer f.Close()
 	w := csv.NewWriter(f)
-	// if err = w.Write(models.GetSchema(models.Course{})); err != nil {
-	// 	return err
-	// }
 	var (
 		mact    = 0
 		maxSubj = 0
@@ -47,6 +43,7 @@ func courseTable(crs []*ucm.Course) error {
 			c.Subject,
 			str(c.Number),
 			c.Activity,
+			"0",
 		})
 		if err != nil {
 			return err
@@ -70,13 +67,8 @@ func lecturesTable(
 	defer f.Close()
 	lectures := make(map[int]*ucm.Course)
 	w := csv.NewWriter(f)
-	// if err = w.Write(models.GetSchema(models.Lect{})); err != nil {
-	// 	return nil, err
-	// }
 
-	var (
-		mtitle = 0
-	)
+	var mtitle = 0
 	for _, c := range crs {
 		if c.Activity != Lecture {
 			continue
@@ -96,7 +88,7 @@ func lecturesTable(
 		row := [...]string{
 			str(c.CRN),
 			str(c.Number),
-			c.Title,
+			cleanTitle(c.Title),
 			str(c.Units),
 			c.Activity,
 			str(c.Days),
@@ -105,6 +97,7 @@ func lecturesTable(
 			c.Date.Start.Format(dateformat),
 			c.Date.End.Format(dateformat),
 			str(instructorID),
+			"0",
 		}
 		if err = w.Write(row[:]); err != nil {
 			return nil, err
@@ -123,9 +116,6 @@ func labsDiscTable(sch ucm.Schedule, instructors map[string]*instructorMeta) err
 	}
 	defer f.Close()
 	w := csv.NewWriter(f)
-	// if err = w.Write(models.GetSchema(models.LabDisc{})); err != nil {
-	// 	return err
-	// }
 	for _, c := range sch.Ordered() {
 		if c.Activity == Lecture {
 			continue
@@ -157,6 +147,7 @@ func labsDiscTable(sch ucm.Schedule, instructors map[string]*instructorMeta) err
 			c.Time.End.Format(timeformat),
 			c.BuildingRoom,
 			str(instructorID),
+			"0",
 		}
 		if err = w.Write(row[:]); err != nil {
 			return err
@@ -173,9 +164,6 @@ func examsTable(crs []*ucm.Course) error {
 	}
 	defer f.Close()
 	w := csv.NewWriter(f)
-	if err = w.Write(models.GetSchema(models.Exam{})); err != nil {
-		return err
-	}
 	for _, c := range crs {
 		if c.Exam == nil {
 			continue
@@ -230,6 +218,7 @@ func enrollmentTable(crs []*ucm.Course) error {
 					str(c.Capacity),
 					str(c.Enrolled),
 					str(c.SeatsOpen()),
+					"0",
 				}
 				mu.Lock()
 				err = w.Write(row[:])
@@ -256,9 +245,6 @@ func writeInstructorTable(crs []*ucm.Course) (map[string]*instructorMeta, error)
 		instructors = getInstructors(crs)
 		maxname     = 0
 	)
-	if err = w.Write(models.GetSchema(models.Instructor{})); err != nil {
-		return nil, err
-	}
 	for _, inst := range instructors {
 		maxname = max(maxname, len(inst.name))
 		if err = w.Write([]string{str(inst.id), inst.name}); err != nil {
