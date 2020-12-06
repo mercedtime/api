@@ -153,22 +153,19 @@ func writes(sch ucm.Schedule) error {
 		err error
 		wg  sync.WaitGroup
 	)
-	wg.Add(1)
+	wg.Add(5)
 	go func() {
 		defer wg.Done()
-		err := courseTable(courses)
-		if err != nil {
+		if err := courseTable(courses); err != nil {
 			log.Println(err)
 		}
 	}()
-	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		if err = examsTable(courses); err != nil {
 			log.Println(err)
 		}
 	}()
-	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		if err = enrollmentTable(courses); err != nil {
@@ -179,15 +176,12 @@ func writes(sch ucm.Schedule) error {
 	if err != nil {
 		log.Println(err)
 	}
-	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_, err = lecturesTable(courses, inst)
-		if err != nil {
+		if _, err = lecturesTable(courses, inst); err != nil {
 			log.Println(err)
 		}
 	}()
-	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		if err = labsDiscTable(sch, inst); err != nil {

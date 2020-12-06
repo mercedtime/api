@@ -37,6 +37,15 @@ Outer:
 	return schema
 }
 
+// GetNamedSchema will return a table schema with the named columns
+func GetNamedSchema(tableName string, v interface{}) []string {
+	schema := GetSchema(v)
+	for i := range schema {
+		schema[i] = tableName + "." + schema[i]
+	}
+	return schema
+}
+
 // Lect is a lecture
 type Lect struct {
 	CRN          int       `db:"crn" csv:"crn" json:"crn"`

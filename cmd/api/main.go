@@ -10,6 +10,7 @@ import (
 	"time"
 
 	// database drivers
+
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 
@@ -81,16 +82,44 @@ func main() {
 		})
 	})
 
-	r.GET("/lectures", listLectures(db))
-	r.GET("/lecture/:crn", lecture(db))
-	r.GET("/lecture/:crn/exam", exam(db))
-	r.GET("/lecture/:crn/instructor", instructorFromLectureCRN(db))
-	r.GET("/lecture/:crn/enrollment", func(c *gin.Context) { c.Status(http.StatusNotImplemented) })
-	r.GET("/exams", listExams(db))
-	r.GET("/labs", listLabsDiscs(db))
-	r.GET("/discussions", listLabsDiscs(db))
+	listparams := func(c *gin.Context) {
+		limit, offset := arrayOpts(c)
+		c.Set("limit", limit)
+		c.Set("offset", offset)
+		subj, ok := c.GetQuery("subject")
+		if ok {
+			c.Set("subject", subj)
+		}
+		c.Next()
+	}
+
+	r.GET("/lectures", listparams, listLectures(db))
+	r.GET("/exams", listparams, listExams(db))
+	r.GET("/labs", listparams, listLabsDiscs(db))
+	r.GET("/discussions", listparams, listLabsDiscs(db))
+	r.GET("/instructors", listparams, listInstructors(db))
+
+	lect := r.Group("/lecture", func(c *gin.Context) {
+		crn, ok := c.Params.Get("crn")
+		if !ok {
+			c.JSON(400, map[string]string{"error": "no crn given", "status": "bad request"})
+			return
+		}
+		c.Set("crn", crn)
+		c.Next()
+	})
+	lect.GET("/:crn", lecture(db))
+	lect.GET("/:crn/exam", exam(db))
+	lect.GET("/:crn/labs", labsForLecture(db))
+	lect.GET("/:crn/instructor", instructorFromLectureCRN(db))
+	lect.GET("/:crn/enrollment", func(c *gin.Context) {
+		c.Status(http.StatusNotImplemented)
+	})
+
 	r.GET("/instructor/:id", instructorFromID(db))
-	r.GET("/instructors", listInstructors(db))
+	r.GET("/instructor/:id/lectures")
+	r.GET("/instructor/:id/labs")
+	r.GET("/instructor/:id/discussions")
 
 	r.Any("/test", func(c *gin.Context) {
 		resp := map[string]interface{}{
@@ -98,11 +127,10 @@ func main() {
 			"testing": true,
 			"mode":    conf.Mode,
 			"db": map[string]interface{}{
-				"dsn":    conf.GetDSN(),
+				// "dsn":    conf.GetDSN(),
 				"driver": conf.Database.Driver,
 			},
 		}
-		log.Println(c.Keys)
 		b, err := json.MarshalIndent(resp, "", "  ")
 		if err != nil {
 			c.Status(500)
@@ -150,7 +178,7 @@ func listquery(q string, db *sql.DB, c *gin.Context) (*sql.Rows, error) {
 
 var (
 	lecturesQuery = `
-		SELECT ` + strings.Join(models.GetSchema(models.Lect{}), ",") + `
+		SELECT ` + strings.Join(models.GetNamedSchema("lectures", models.Lect{}), ",") + `
 		FROM lectures
 		LIMIT $1 OFFSET $2`
 	lecturesBySubjectQuery = `
@@ -160,9 +188,24 @@ var (
 			l.crn = c.crn AND
 			c.subject = $1
 		LIMIT $2 OFFSET $3`
+	lectLabsQuery = `SELECT
+		` + strings.Join(models.GetNamedSchema("lab", models.LabDisc{}), ",") + `
+	FROM Labs_Discussions lab, lectures l
+	WHERE
+		l.crn = $1 AND
+		lab.course_crn = l.crn`
+
+	courseTAsQuery = `SELECT i.id,i.name
+	FROM
+		instructor i, lectures l, labs_discussions lab
+	WHERE
+		l.crn = $1 AND
+		l.crn = lab.course_crn AND
+		lab.instructor_id = i.id`
+
 	labsQuery = `
 		SELECT
-			` + strings.Join(models.GetSchema(models.LabDisc{}), ",") + `
+			` + strings.Join(models.GetNamedSchema("labs_discussions", models.LabDisc{}), ",") + `
 		FROM Labs_Discussions LIMIT $1 OFFSET $2`
 	examsQuery = `
 		SELECT
@@ -183,10 +226,10 @@ func listLectures(db *sql.DB) func(*gin.Context) {
 			lectures = make([]interface{}, 0, 100)
 		)
 		limit, offset := arrayOpts(c)
+
 		subject, ok := c.GetQuery("subject")
 		if ok {
 			query = lecturesBySubjectQuery
-			fmt.Println(query)
 			rows, err = db.Query(query, strings.ToUpper(subject), limit, offset)
 		} else {
 			rows, err = db.Query(query, limit, offset)
@@ -211,18 +254,34 @@ func listLectures(db *sql.DB) func(*gin.Context) {
 	}
 }
 
-func listLabsDiscs(db *sql.DB) gin.HandlerFunc {
+func labsForLecture(db *sql.DB) gin.HandlerFunc {
+	scan := func(r *sql.Rows) (interface{}, error) {
+		l := models.LabDisc{}
+		return &l, l.Scan(r)
+	}
+	return getList(db, lectLabsQuery, scan, "crn")
+}
+
+func getList(db *sql.DB, query string, scan func(*sql.Rows) (interface{}, error), keys ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		list := make([]interface{}, 0, 100)
-		limit, offset := arrayOpts(c)
-		rows, err := db.Query(labsQuery, limit, offset)
+		var (
+			list      = make([]interface{}, 0, 100)
+			queryargs = make([]interface{}, 0, len(keys))
+		)
+		for _, k := range keys {
+			arg, ok := c.Get(k)
+			if ok {
+				queryargs = append(queryargs, arg)
+			}
+		}
+		rows, err := db.Query(query, queryargs...)
 		if err != nil {
 			senderr(c, err)
 			return
 		}
 		for rows.Next() {
-			l := models.LabDisc{}
-			if err = l.Scan(rows); err != nil {
+			l, err := scan(rows)
+			if err != nil {
 				senderr(c, err)
 				return
 			}
@@ -236,30 +295,20 @@ func listLabsDiscs(db *sql.DB) gin.HandlerFunc {
 	}
 }
 
-func listExams(db *sql.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var examList = make([]interface{}, 0, 10)
-		limit, offset := arrayOpts(c)
-		rows, err := db.Query(examsQuery, limit, offset)
-		if err != nil {
-			senderr(c, err)
-			return
-		}
-		for rows.Next() {
-			var e models.Exam
-			err = e.Scan(rows)
-			if err != nil {
-				senderr(c, err)
-				return
-			}
-			examList = append(examList, e)
-		}
-		if err = rows.Close(); err != nil {
-			senderr(c, err)
-			return
-		}
-		c.JSON(200, examList)
+func listLabsDiscs(db *sql.DB) gin.HandlerFunc {
+	scan := func(r *sql.Rows) (interface{}, error) {
+		l := models.LabDisc{}
+		return &l, l.Scan(r)
 	}
+	return getList(db, labsQuery, scan, "limit", "offset")
+}
+
+func listExams(db *sql.DB) gin.HandlerFunc {
+	scan := func(r *sql.Rows) (interface{}, error) {
+		e := models.Exam{}
+		return &e, e.Scan(r)
+	}
+	return getList(db, examsQuery, scan, "limit", "offset")
 }
 
 var (
@@ -293,13 +342,11 @@ var (
 
 func getFromCRN(db *sql.DB, query string, v interface{ Scan(models.Scanable) error }) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		crn, ok := c.Params.Get("crn")
-		if !ok {
-			c.JSON(http.StatusBadRequest, map[string]string{"error": "no crn"})
-			return
-		}
-		row := db.QueryRow(query, crn)
-		err := v.Scan(row)
+		var (
+			crn = c.GetString("crn")
+			row = db.QueryRow(query, crn)
+			err = v.Scan(row)
+		)
 		if err == sql.ErrNoRows {
 			c.JSON(404, map[string]interface{}{
 				"error":  "no results found for crn: " + crn,
@@ -382,12 +429,7 @@ func getLectureInstructors(db *sql.DB, crn string) ([]*models.Instructor, error)
 
 func instructorFromLectureCRN(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		crn, ok := c.Params.Get("crn")
-		if !ok {
-			c.JSON(http.StatusBadRequest, map[string]string{"error": "no crn"})
-			return
-		}
-		insts, err := getLectureInstructors(db, crn)
+		insts, err := getLectureInstructors(db, c.GetString("crn"))
 		if err != nil {
 			senderr(c, err)
 			return
