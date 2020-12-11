@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"text/template"
 	"time"
 
 	// database drivers
@@ -115,6 +116,26 @@ func main() {
 	lect.GET("/:crn/enrollment", func(c *gin.Context) {
 		c.Status(http.StatusNotImplemented)
 	})
+	lect.DELETE("/:crn", func(c *gin.Context) {
+		_, err := db.Exec("delete from lectures where crn = $1", c.GetString("crn"))
+		if err != nil {
+			log.Println(err)
+		}
+	})
+
+	// lect.GET("/search", func(c *gin.Context) {
+	// 	q := lectureQueryBase + ` JOIN enrollment e ON l.crn = e.crn `
+	// 	db.Query()
+	// })
+	r.POST("/lecture", newlect(db))
+	r.POST("/lab", func(c *gin.Context) {
+		l := models.LabDisc{}
+		if err := c.BindJSON(&l); err != nil {
+			senderr(c, err)
+			return
+		}
+
+	})
 
 	r.GET("/instructor/:id", instructorFromID(db))
 	r.GET("/instructor/:id/lectures")
@@ -127,7 +148,7 @@ func main() {
 			"testing": true,
 			"mode":    conf.Mode,
 			"db": map[string]interface{}{
-				// "dsn":    conf.GetDSN(),
+				"dsn":    conf.GetDSN(),
 				"driver": conf.Database.Driver,
 			},
 		}
@@ -177,6 +198,38 @@ func listquery(q string, db *sql.DB, c *gin.Context) (*sql.Rows, error) {
 }
 
 var (
+	tmpl    = template.New("api").Funcs(funcMap)
+	funcMap = map[string]interface{}{
+		"schema":       models.GetSchema,
+		"named_schema": models.GetNamedSchema,
+		"join":         strings.Join,
+	}
+)
+
+func init() {
+	tmpl.Parse(`
+SELECT
+	{{ join (schema .Type) "," }}
+FROM
+	{{ .Table }}{{ if .Search }},{{end}}
+`)
+	type data struct {
+		Type          interface{}
+		Table         string
+		Limit, Offset interface{}
+		Search        string
+	}
+	// tmpl.ExecuteTemplate(os.Stdout, "api", data{
+	// 	Type:  models.Lect{},
+	// 	Table: "lectures",
+	// })
+}
+
+var (
+	lectureQueryBase = `
+	SELECT ` + strings.Join(models.GetNamedSchema("l", models.Lect{}), ",") + `
+	FROM lectures l `
+
 	lecturesQuery = `
 		SELECT ` + strings.Join(models.GetNamedSchema("lectures", models.Lect{}), ",") + `
 		FROM lectures
@@ -216,6 +269,21 @@ var (
 		FROM exam
 		LIMIT $1 OFFSET $2`
 )
+
+func newlect(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var l models.Lect
+		if err := c.BindJSON(&l); err != nil {
+			log.Println(err)
+		}
+		_, err := db.Exec(`
+		INSERT INTO lectures (crn,course_num,title,units,activity, days)
+		VALUES ($1,$2,$3,$4,$5,$6)`, l.CRN, l.CourseNum, l.Title, l.Units, "LECT", l.Days)
+		if err != nil {
+			log.Println(err)
+		}
+	}
+}
 
 func listLectures(db *sql.DB) func(*gin.Context) {
 	var query = lecturesQuery

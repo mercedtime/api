@@ -34,6 +34,7 @@ func main() {
 		host      string = "localhost"
 		port      string = "5432"
 		desc             = false
+		conf             = ucm.ScheduleConfig{Year: 2021, Term: "spring"}
 	)
 	flag.StringVar(&password, "password", password, "give postgres a password")
 	flag.StringVar(&host, "host", host, "specify the database host")
@@ -41,6 +42,9 @@ func main() {
 	flag.BoolVar(&dbOpsOnly, "db", dbOpsOnly, "only perform database updates")
 	flag.BoolVar(&csvOps, "csv", csvOps, "write the tables to csv files")
 	flag.BoolVar(&desc, "desc", desc, "update course descriptions (takes longer)")
+
+	flag.IntVar(&conf.Year, "year", conf.Year, "the year")
+	flag.StringVar(&conf.Term, "term", conf.Term, "the term")
 	flag.Parse()
 
 	if !dbOpsOnly && !csvOps {
@@ -49,7 +53,6 @@ func main() {
 		log.Fatal("nothing to be done. use '-db-ops' or '-csv'")
 	}
 
-	conf := ucm.ScheduleConfig{Year: 2021, Term: "spring"}
 	sch, err := ucm.NewSchedule(conf)
 	if err != nil {
 		log.Fatal(err)
