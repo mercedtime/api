@@ -243,14 +243,14 @@ var (
 		LIMIT $2 OFFSET $3`
 	lectLabsQuery = `SELECT
 		` + strings.Join(models.GetNamedSchema("lab", models.LabDisc{}), ",") + `
-	FROM Labs_Discussions lab, lectures l
+	FROM aux lab, lectures l
 	WHERE
 		l.crn = $1 AND
 		lab.course_crn = l.crn`
 
 	courseTAsQuery = `SELECT i.id,i.name
 	FROM
-		instructor i, lectures l, labs_discussions lab
+		instructor i, lectures l, aux lab
 	WHERE
 		l.crn = $1 AND
 		l.crn = lab.course_crn AND
@@ -258,8 +258,8 @@ var (
 
 	labsQuery = `
 		SELECT
-			` + strings.Join(models.GetNamedSchema("labs_discussions", models.LabDisc{}), ",") + `
-		FROM Labs_Discussions LIMIT $1 OFFSET $2`
+			` + strings.Join(models.GetNamedSchema("aux", models.LabDisc{}), ",") + `
+		FROM aux LIMIT $1 OFFSET $2`
 	examsQuery = `
 		SELECT
 			crn,
@@ -277,8 +277,8 @@ func newlect(db *sql.DB) gin.HandlerFunc {
 			log.Println(err)
 		}
 		_, err := db.Exec(`
-		INSERT INTO lectures (crn,course_num,title,units,activity, days)
-		VALUES ($1,$2,$3,$4,$5,$6)`, l.CRN, l.CourseNum, l.Title, l.Units, "LECT", l.Days)
+		INSERT INTO lectures (crn,units,activity, days)
+		VALUES ($1,$2,$3,$4,$5,$6)`, l.CRN, l.Units, "LECT", l.Days)
 		if err != nil {
 			log.Println(err)
 		}

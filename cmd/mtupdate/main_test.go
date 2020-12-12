@@ -3,58 +3,73 @@ package main
 import (
 	"fmt"
 	"testing"
-	"time"
 
-	"github.com/harrybrwn/edu/school/ucmerced/ucm"
-	"github.com/mercedtime/api/db/models"
+	"github.com/doug-martin/goqu/v9"
 )
 
-func TestReflection(t *testing.T) {
-	now := time.Now()
-	exam := &models.Exam{
-		CRN:  123456,
-		Date: now, StartTime: time.Now(), EndTime: time.Now()}
-	row, err := toCsvRow(exam)
+func Test(t *testing.T) {
+	// conf := ucm.ScheduleConfig{Year: 2021, Term: "spring"}
+	// sch, err := ucm.NewSchedule(conf)
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	// err = fullUpdate(nil, sch)
+	// if err != nil {
+	// 	t.Error(err)
+	// }
+
+	c := RawCourse{
+		CRN:       1234,
+		Subject:   "CSE",
+		CourseNum: 160,
+		Title:     "Computer Networks",
+	}
+	// q, args, err := goqu.Update("test").Set(
+	// 	c,
+	// ).From(
+	// 	goqu.Select(&RawCourse{}).From("tmp").Where(),
+	// ).ToSQL()
+	// q, args, err := goqu.Select(c).ToSQL()
+	q, args, err := goqu.Insert("test").Rows(c).ToSQL()
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
-	if row[0] != "123456" {
-		t.Errorf("bad crn: %v", row[0])
-	}
-	if row[1] != now.Format(dateformat) {
-		t.Errorf("bad time string: got %v, want %v", row[1], now.String())
-	}
+	fmt.Println(args)
+	fmt.Println(q)
+}
+
+func TestReflection(t *testing.T) {
 }
 
 func TestToCsv(t *testing.T) {
-	conf := ucm.ScheduleConfig{Year: 2021, Term: "spring"}
-	sch, err := ucm.NewSchedule(conf)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// conf := ucm.ScheduleConfig{Year: 2021, Term: "spring"}
+	// sch, err := ucm.NewSchedule(conf)
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
 
-	courses := sch.Ordered()
-	for _, c := range courses {
-		l := &models.Lect{
-			CRN:          c.CRN,
-			CourseNum:    c.CourseNumber(),
-			Title:        c.Title,
-			Units:        c.Units,
-			Activity:     c.Activity,
-			Days:         str(c.Days),
-			StartTime:    c.Time.Start,
-			EndTime:      c.Time.End,
-			StartDate:    c.Date.Start,
-			EndDate:      c.Date.End,
-			InstructorID: 0,
-		}
-		line, err := toCsvRow(l)
-		if err != nil {
-			t.Error(err)
-		}
-		fmt.Println(line)
-		if len(line) == 0 {
-			t.Error("line has no length")
-		}
-	}
+	// courses := sch.Ordered()
+	// for _, c := range courses {
+	// 	l := &models.Lect{
+	// 		CRN:          c.CRN,
+	// 		CourseNum:    c.CourseNumber(),
+	// 		Title:        c.Title,
+	// 		Units:        c.Units,
+	// 		Activity:     c.Activity,
+	// 		Days:         str(c.Days),
+	// 		StartTime:    c.Time.Start,
+	// 		EndTime:      c.Time.End,
+	// 		StartDate:    c.Date.Start,
+	// 		EndDate:      c.Date.End,
+	// 		InstructorID: 0,
+	// 	}
+	// 	line, err := toCsvRow(l)
+	// 	if err != nil {
+	// 		t.Error(err)
+	// 	}
+	// 	fmt.Println(line)
+	// 	if len(line) == 0 {
+	// 		t.Error("line has no length")
+	// 	}
+	// }
 }

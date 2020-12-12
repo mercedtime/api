@@ -19,7 +19,7 @@ type Config struct {
 	Database struct {
 		Driver   string `config:"driver"`
 		Host     string `config:"host" default:"localhost"`
-		Port     int    `config:"port" default:"5432"`
+		Port     int    `config:"port" default:"5432" env:"POSTGRES_PORT"`
 		User     string `config:"user"`
 		Password string `config:"password" env:"POSTGRES_PASSWORD"`
 		// Database name or database filename

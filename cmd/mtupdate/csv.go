@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/harrybrwn/edu/school/ucmerced/ucm"
+	"github.com/mercedtime/api/db/models"
 )
 
 var csvOutDir = "data"
@@ -24,7 +25,7 @@ func csvfile(name string) (*os.File, error) {
 	return os.OpenFile(filepath.Join(csvOutDir, name), os.O_CREATE|os.O_WRONLY, 0644)
 }
 
-func courseTable(crs []*ucm.Course) error {
+func courseTable(courses []*ucm.Course) error {
 	f, err := csvfile("course.csv")
 	if err != nil {
 		return err
@@ -35,14 +36,22 @@ func courseTable(crs []*ucm.Course) error {
 		mact    = 0
 		maxSubj = 0
 	)
-	for _, c := range crs {
+	for _, c := range courses {
 		mact = max(len(c.Activity), mact)
 		maxSubj = max(len(c.Subject), maxSubj)
+		crs := models.Course{
+			CRN:       c.CRN,
+			Subject:   c.Subject,
+			CourseNum: c.Number,
+			Type:      c.Activity,
+			Title:     cleanTitle(c.Title),
+		}
 		err = w.Write([]string{
-			strconv.FormatInt(int64(c.CRN), 10),
-			c.Subject,
-			str(c.Number),
-			c.Activity,
+			strconv.FormatInt(int64(crs.CRN), 10),
+			crs.Subject,
+			str(crs.CourseNum),
+			crs.Type,
+			crs.Title,
 			"0",
 		})
 		if err != nil {
@@ -70,7 +79,8 @@ func lecturesTable(
 
 	var mtitle = 0
 	for _, c := range crs {
-		if c.Activity != Lecture {
+		// Seminars are technically lectures i guess, they all have exams so...
+		if c.Activity != models.Lecture || c.Activity == models.Seminar {
 			continue
 		}
 		if _, ok := lectures[c.CRN]; ok {
@@ -85,18 +95,32 @@ func lecturesTable(
 			instructorID = instructor.id
 		}
 		mtitle = max(mtitle, len(c.Title))
+		// For type safety and so i get error messages
+		// when the schema changes
+		l := models.Lect{
+			CRN:          c.CRN,
+			Units:        c.Units,
+			Days:         str(c.Days),
+			StartTime:    c.Time.Start,
+			EndTime:      c.Time.End,
+			StartDate:    c.Date.Start,
+			EndDate:      c.Date.End,
+			InstructorID: instructorID,
+		}
+		// row, err := models.ToCSVRow(&l)
+		// if err != nil {
+		// 	log.Println("Could not create lecture row:", err)
+		// 	continue
+		// }
 		row := [...]string{
-			str(c.CRN),
-			str(c.Number),
-			cleanTitle(c.Title),
-			str(c.Units),
-			c.Activity,
-			str(c.Days),
-			c.Time.Start.Format(timeformat),
-			c.Time.End.Format(timeformat),
-			c.Date.Start.Format(dateformat),
-			c.Date.End.Format(dateformat),
-			str(instructorID),
+			str(l.CRN),
+			str(l.Units),
+			l.Days,
+			l.StartTime.Format(models.TimeFormat),
+			l.EndTime.Format(models.TimeFormat),
+			l.StartDate.Format(models.DateFormat),
+			l.EndDate.Format(models.DateFormat),
+			str(l.InstructorID),
 			"0",
 		}
 		if err = w.Write(row[:]); err != nil {
@@ -117,15 +141,17 @@ func labsDiscTable(sch ucm.Schedule, instructors map[string]*instructorMeta) err
 	defer f.Close()
 	w := csv.NewWriter(f)
 	for _, c := range sch.Ordered() {
-		if c.Activity == Lecture {
+		if c.Activity == models.Lecture {
 			continue
 		}
-		var lectCRN string
+		var lectCRN int
 		lect, err := getDiscussionLecture(c, sch)
 		if err == nil {
-			lectCRN = str(lect.CRN)
+			lectCRN = lect.CRN
 		} else {
-			lectCRN = "0"
+			// TODO handle this case better its making
+			// database managment harder
+			lectCRN = 0
 		}
 		instructorID := 0
 		instructor, ok := instructors[c.Instructor]
@@ -134,19 +160,27 @@ func labsDiscTable(sch ucm.Schedule, instructors map[string]*instructorMeta) err
 		} else {
 			instructorID = instructor.id
 		}
+		l := models.LabDisc{
+			CRN:          c.CRN,
+			CourseCRN:    lectCRN,
+			Section:      c.Section,
+			Units:        c.Units,
+			Days:         str(c.Days),
+			StartTime:    c.Time.Start,
+			EndTime:      c.Time.End,
+			Building:     c.BuildingRoom,
+			InstructorID: instructorID,
+		}
 		row := [...]string{
-			str(c.CRN),
-			lectCRN,
-			str(c.Number),
-			c.Section,
-			c.Title,
-			str(c.Units),
-			c.Activity,
-			str(c.Days),
-			c.Time.Start.Format(timeformat),
-			c.Time.End.Format(timeformat),
-			c.BuildingRoom,
-			str(instructorID),
+			str(l.CRN),
+			str(l.CourseCRN),
+			l.Section,
+			str(l.Units),
+			l.Days,
+			l.StartTime.Format(models.TimeFormat),
+			l.EndTime.Format(models.TimeFormat),
+			l.Building,
+			str(l.InstructorID),
 			"0",
 		}
 		if err = w.Write(row[:]); err != nil {
@@ -170,9 +204,9 @@ func examsTable(crs []*ucm.Course) error {
 		}
 		row := [...]string{
 			str(c.CRN),
-			c.Exam.Date.Format(dateformat),
-			c.Time.Start.Format(timeformat),
-			c.Time.End.Format(timeformat),
+			c.Exam.Date.Format(models.DateFormat),
+			c.Time.Start.Format(models.TimeFormat),
+			c.Time.End.Format(models.TimeFormat),
 		}
 		if err = w.Write(row[:]); err != nil {
 			return err
@@ -220,7 +254,7 @@ func enrollmentTable(crs []*ucm.Course) error {
 					str(c.SeatsOpen()),
 					"0",
 				}
-				mu.Lock()
+				mu.Lock() // make sure we only have one writer
 				err = w.Write(row[:])
 				mu.Unlock()
 				if err != nil {
@@ -247,7 +281,11 @@ func writeInstructorTable(crs []*ucm.Course) (map[string]*instructorMeta, error)
 	)
 	for _, inst := range instructors {
 		maxname = max(maxname, len(inst.name))
-		if err = w.Write([]string{str(inst.id), inst.name}); err != nil {
+		if err = w.Write([]string{
+			str(inst.id),
+			inst.name,
+			"0",
+		}); err != nil {
 			panic(err)
 		}
 	}
@@ -292,7 +330,7 @@ func writeAllData(crs []*ucm.Course) error {
 			strconv.FormatInt(int64(c.CRN), 10),
 			c.Fullcode,
 			c.Subject,
-			c.Title,
+			cleanTitle(c.Title),
 			strconv.FormatInt(int64(c.Units), 10),
 			c.Activity,
 			str(c.Days),

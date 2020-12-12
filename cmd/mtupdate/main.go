@@ -2,13 +2,11 @@ package main
 
 import (
 	"database/sql"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -109,18 +107,36 @@ func updates(w io.Writer, db *sql.DB, sch ucm.Schedule, desc bool) (err error) {
 	var wg sync.WaitGroup
 	courses := sch.Ordered()
 	inst := getInstructors(courses)
+
+	t := time.Now()
+	fmt.Fprintf(w, "[%s] ", t.Format(time.Stamp))
 	if desc {
 		wg.Add(1)
 		go updateEnrollment(db, sch.Ordered(), &wg)
 	} else {
+		fmt.Fprintf(w, "enrollments:")
 		err = updateEnrollmentCounts(db, courses)
 		if err != nil {
 			return err
 		}
+		fmt.Fprintf(w, "%v ok|", time.Now().Sub(t))
 	}
 
-	t := time.Now()
-	fmt.Fprintf(w, "[%s] lectures:", time.Now().Format(time.Stamp))
+	fmt.Fprintf(w, "instructor:")
+	err = updateInstructorsTable(db, inst)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+	fmt.Fprintf(w, "%v ok|course:", time.Now().Sub(t))
+	// The course table must go first in case there are new
+	// CRNs because other tables depend on this table
+	// via foreign key constrains.
+	if err = updateCourseTable(db, courses); err != nil {
+		log.Println(err)
+		return err
+	}
+	fmt.Fprintf(w, "%v ok|lectures:", time.Now().Sub(t))
 	err = updateLectureTable(db, courses, inst)
 	if err != nil {
 		log.Println(err)
@@ -132,15 +148,10 @@ func updates(w io.Writer, db *sql.DB, sch ucm.Schedule, desc bool) (err error) {
 		log.Println(err)
 		return err
 	}
-	fmt.Fprintf(w, "%v ok|instructor:", time.Now().Sub(t))
-	err = updateInstructorsTable(db, inst)
+	fmt.Fprintf(w, "%v ok|exams:", time.Now().Sub(t))
+	err = updateExamTable(db, courses)
 	if err != nil {
-		log.Println(err)
-		return err
-	}
-	fmt.Fprintf(w, "%v ok|course:", time.Now().Sub(t))
-	if err = updateCourseTable(db, courses); err != nil {
-		log.Println(err)
+		log.Println("Error update exam table:", err)
 		return err
 	}
 	fmt.Fprintf(w, "%v ok|enrollments:", time.Now().Sub(t))
@@ -195,79 +206,6 @@ func writes(sch ucm.Schedule) error {
 	return nil
 }
 
-const (
-	dateformat = time.RFC3339
-	timeformat = "15:04:05"
-)
-
-func toCsvRow(v interface{}) ([]string, error) {
-	val := reflect.ValueOf(v)
-	switch val.Kind() {
-	case reflect.Ptr:
-		val = val.Elem()
-	}
-	var (
-		row []string
-		s   string
-	)
-	for i := 0; i < val.NumField(); i++ {
-		f := val.Field(i)
-
-	KindCheck:
-		switch f.Kind() {
-		case reflect.Ptr:
-			f = f.Elem()
-			goto KindCheck
-		case reflect.String:
-			s = f.String()
-		case reflect.Int:
-			s = strconv.FormatInt(f.Int(), 10)
-		case reflect.Bool:
-			s = strconv.FormatBool(f.Bool())
-		case reflect.Float32:
-			s = strconv.FormatFloat(f.Float(), 'f', -1, 32)
-		case reflect.Float64:
-			s = strconv.FormatFloat(f.Float(), 'f', -1, 64)
-		case reflect.Struct:
-			itf := f.Interface()
-			switch itval := itf.(type) {
-			case time.Time:
-				s = itval.Format(dateformat)
-			case ucm.Exam:
-				s = fmt.Sprintf("Exam{%v}", itval.Day.String())
-			case struct{ Start, End time.Time }:
-				s = itval.Start.Format(dateformat)
-			default:
-				return nil, errors.New("cannot handle this struct")
-			}
-		case reflect.Slice:
-			switch arr := f.Interface().(type) {
-			case []byte:
-				s = string(arr)
-			case []time.Weekday:
-				s = daysString(arr)
-			default:
-				return nil, errors.New("can't handle arrays")
-			}
-		case reflect.Invalid:
-			s = "<nil>"
-		default:
-			fmt.Println("what type is this", f.Kind())
-		}
-		row = append(row, s)
-	}
-	return row, nil
-}
-
-// These are the activity types for any given course
-const (
-	Lecture    = "LECT"
-	Discussion = "DISC"
-	Lab        = "LAB"
-	Seminar    = "SEM"
-	// TODO find out what "STDO", "INI", "FLDW" are
-)
-
 type instructorMeta struct {
 	name     string
 	ncourses int
@@ -315,7 +253,7 @@ func getDiscussionLecture(disc *ucm.Course, sch ucm.Schedule) (*ucm.Course, erro
 	)
 	for i < end {
 		c = ordered[i]
-		if c.Activity != Lecture {
+		if c.Activity != models.Lecture {
 			i++
 			continue // these are the same
 		}
@@ -331,7 +269,7 @@ func getDiscussionLecture(disc *ucm.Course, sch ucm.Schedule) (*ucm.Course, erro
 			for j < end &&
 				subcourse.Number == disc.Number &&
 				subcourse.Subject == disc.Subject &&
-				subcourse.Activity != Lecture {
+				subcourse.Activity != models.Lecture {
 				if subcourse.CRN == disc.CRN {
 					return c, nil
 				}
@@ -347,17 +285,15 @@ func getDiscussionLecture(disc *ucm.Course, sch ucm.Schedule) (*ucm.Course, erro
 	}
 	return nil, fmt.Errorf("could not find a lecture for \"%s %s\"", disc.Fullcode, disc.Title)
 }
+
 func generateLectureInsert(sch ucm.Schedule) string {
-	insert := goqu.Insert("Lectures")
+	insert := goqu.Insert("lectures")
 	rows := make([]*models.Lect, 0, len(sch))
 	instructorID := 0
 	for _, c := range sch.Ordered() {
 		l := &models.Lect{
 			CRN:          c.CRN,
-			CourseNum:    c.Number,
-			Title:        c.Title,
 			Units:        c.Units,
-			Activity:     c.Activity,
 			Days:         str(c.Days),
 			StartTime:    c.Time.Start,
 			EndTime:      c.Time.End,
@@ -394,9 +330,9 @@ func str(x interface{}) string {
 		if v.Equal(time.Time{}) {
 			return ""
 		} else if v.Hour() == 0 && v.Minute() == 0 && v.Second() == 0 {
-			return v.Format(dateformat)
+			return v.Format(models.DateFormat)
 		} else if v.Year() == 0 && v.Month() == time.January && v.Day() == 1 {
-			return v.Format(timeformat)
+			return v.Format(models.TimeFormat)
 		}
 		return ""
 	default:
