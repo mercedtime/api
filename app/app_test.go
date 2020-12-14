@@ -114,19 +114,26 @@ func TestLectureRoutes(t *testing.T) {
 		crn int
 		app = testApp(t)
 	)
-	row := app.DB.QueryRow(`select crn from lectures
-							order by random() limit 1`)
-	row.Scan(&crn)
+	// get a testing crn that has an exam
+	row := app.DB.QueryRow(`
+		select l.crn from lectures l, exam e
+		where l.crn = e.crn
+		order by random() limit 1`)
+	if err := row.Scan(&crn); err != nil {
+		t.Fatal(err)
+	}
+
 	for _, tst := range []struct {
 		Path string
 		Code int
 	}{
 		{Path: fmt.Sprintf("/lecture/%d", crn), Code: 200},
+		{Path: "/lecture/9999999", Code: 404},
 		{Path: fmt.Sprintf("/lecture/%d/exam", crn), Code: 200},
+		{Path: "/lecture/9999999/exam", Code: 404},
 		{Path: fmt.Sprintf("/lecture/%d/labs", crn), Code: 200},
 		{Path: fmt.Sprintf("/lecture/%d/instructor", crn), Code: 200},
-		{Path: fmt.Sprintf("/lecture/%d/enrollment", crn), Code: 200},
-		{Path: "/lecture/999999/enrollment", Code: 404},
+		{Path: "/lecture/9999999/instructor", Code: 200}, // TODO this return 404
 	} {
 		r := &http.Request{
 			Method: "GET",
@@ -147,9 +154,12 @@ func TestInstructorRoutes(t *testing.T) {
 		id  int
 		app = testApp(t)
 	)
-	row := app.DB.QueryRow(`select id from instructor
-							order by random() limit 1`) // get a random crn
-	row.Scan(&id)
+	row := app.DB.QueryRow(`
+		select id from instructor
+		order by random() limit 1`) // get a random crn
+	if err := row.Scan(&id); err != nil {
+		t.Fatal(err)
+	}
 	for _, tst := range []struct {
 		Path  string
 		Code  int

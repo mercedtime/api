@@ -31,7 +31,6 @@ func main() {
 		password  string
 		host      string = "localhost"
 		port      string = "5432"
-		desc             = false
 		conf             = ucm.ScheduleConfig{Year: 2021, Term: "spring"}
 	)
 	flag.StringVar(&password, "password", password, "give postgres a password")
@@ -39,7 +38,6 @@ func main() {
 	flag.StringVar(&port, "port", port, "specify the database port")
 	flag.BoolVar(&dbOpsOnly, "db", dbOpsOnly, "only perform database updates")
 	flag.BoolVar(&csvOps, "csv", csvOps, "write the tables to csv files")
-	flag.BoolVar(&desc, "desc", desc, "update course descriptions (takes longer)")
 
 	flag.IntVar(&conf.Year, "year", conf.Year, "the year")
 	flag.StringVar(&conf.Term, "term", conf.Term, "the term")
@@ -74,7 +72,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := updates(os.Stdout, db, sch, desc)
+			err := updates(os.Stdout, db, sch, &wg)
 			if err != nil {
 				log.Fatal("DB Error:", err)
 			}
@@ -93,7 +91,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err = writes(schCP); err != nil {
+			if err = writes(schCP, &wg); err != nil {
 				log.Fatal("CSV Error:", err)
 			}
 			fmt.Print("csv files written ")
@@ -103,24 +101,12 @@ func main() {
 	fmt.Println()
 }
 
-func updates(w io.Writer, db *sql.DB, sch ucm.Schedule, desc bool) (err error) {
-	var wg sync.WaitGroup
+func updates(w io.Writer, db *sql.DB, sch ucm.Schedule, wg *sync.WaitGroup) (err error) {
 	courses := sch.Ordered()
 	inst := getInstructors(courses)
 
 	t := time.Now()
 	fmt.Fprintf(w, "[%s] ", t.Format(time.Stamp))
-	if desc {
-		wg.Add(1)
-		go updateEnrollment(db, sch.Ordered(), &wg)
-	} else {
-		fmt.Fprintf(w, "enrollments:")
-		err = updateEnrollmentCounts(db, courses)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(w, "%v ok|", time.Now().Sub(t))
-	}
 
 	fmt.Fprintf(w, "instructor:")
 	err = updateInstructorsTable(db, inst)
@@ -132,10 +118,14 @@ func updates(w io.Writer, db *sql.DB, sch ucm.Schedule, desc bool) (err error) {
 	// The course table must go first in case there are new
 	// CRNs because other tables depend on this table
 	// via foreign key constrains.
-	if err = updateCourseTable(db, courses); err != nil {
-		log.Println(err)
-		return err
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err = updateCourseTable(db, courses); err != nil {
+			log.Println(err)
+			// return err
+		}
+	}()
 	fmt.Fprintf(w, "%v ok|lectures:", time.Now().Sub(t))
 	err = updateLectureTable(db, courses, inst)
 	if err != nil {
@@ -154,20 +144,16 @@ func updates(w io.Writer, db *sql.DB, sch ucm.Schedule, desc bool) (err error) {
 		log.Println("Error update exam table:", err)
 		return err
 	}
-	fmt.Fprintf(w, "%v ok|enrollments:", time.Now().Sub(t))
-
-	wg.Wait()
 	fmt.Fprintf(w, "%v ok|", time.Now().Sub(t))
 	return nil
 }
 
-func writes(sch ucm.Schedule) error {
+func writes(sch ucm.Schedule, wg *sync.WaitGroup) error {
 	courses := sch.Ordered()
 	var (
 		err error
-		wg  sync.WaitGroup
 	)
-	wg.Add(5)
+	wg.Add(4)
 	go func() {
 		defer wg.Done()
 		if err := courseTable(courses); err != nil {
@@ -177,12 +163,6 @@ func writes(sch ucm.Schedule) error {
 	go func() {
 		defer wg.Done()
 		if err = examsTable(courses); err != nil {
-			log.Println(err)
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		if err = enrollmentTable(courses); err != nil {
 			log.Println(err)
 		}
 	}()
@@ -202,7 +182,6 @@ func writes(sch ucm.Schedule) error {
 			log.Println(err)
 		}
 	}()
-	wg.Wait()
 	return nil
 }
 
@@ -284,6 +263,80 @@ func getDiscussionLecture(disc *ucm.Course, sch ucm.Schedule) (*ucm.Course, erro
 		i++
 	}
 	return nil, fmt.Errorf("could not find a lecture for \"%s %s\"", disc.Fullcode, disc.Title)
+}
+
+// GetCourseTable will get all the updated info needed by course table.
+// Parameter courses is just a full list of raw courses and workers is the
+// number of goroutines spawned that will be making requests to get the course
+// description. The number of workers should be fairly high to get the most
+// performance and should be limited to the number of connections that your
+// computer can have open at one time.
+//
+// Side note: performance drops if the number of workers is too high
+func GetCourseTable(courses []*ucm.Course, workers int) ([]*models.Course, error) {
+	var (
+		result = make([]*models.Course, 0, len(courses))
+		mu     sync.Mutex
+		wg     sync.WaitGroup
+		errs   = make(chan error)
+		ch     = make(chan *ucm.Course)
+	)
+	go func() {
+		// Convert the course list to
+		// a channel in the background
+		for _, c := range courses {
+			ch <- c
+		}
+		close(ch)
+	}()
+
+	// The last worker will not finish until
+	// the goroutine above finishes and will
+	// not free the waitgroup so this function
+	// will not return before all the courses
+	// are processed.
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func(worker int) {
+			defer wg.Done()
+			var innerRes []*models.Course
+			for c := range ch {
+				info, err := c.Info()
+				if err != nil {
+					log.Println("could not get course description:", err)
+					log.Printf("setting description as \"%s\"\n", info)
+					errs <- err
+				}
+				crs := models.Course{
+					CRN:         c.CRN,
+					Subject:     c.Subject,
+					CourseNum:   c.Number,
+					Type:        c.Activity,
+					Title:       cleanTitle(c.Title),
+					Description: info,
+					Capacity:    c.Capacity,
+					Enrolled:    c.Enrolled,
+					Remaining:   c.SeatsOpen(),
+					AutoUpdated: 0,
+				}
+				innerRes = append(innerRes, &crs)
+			}
+			mu.Lock()
+			result = append(result, innerRes...)
+			mu.Unlock()
+		}(i)
+	}
+	wg.Wait()
+
+	// Close the error channel and drain it
+	close(errs)
+	var err error
+	for e := range errs {
+		if err == nil && e != nil {
+			err = e
+		}
+	}
+	return result, err
 }
 
 func generateLectureInsert(sch ucm.Schedule) string {

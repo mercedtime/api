@@ -50,12 +50,18 @@ var (
 
 // Course is a course
 type Course struct {
-	CRN         int    `db:"crn" json:"crn"`
-	Subject     string `db:"subject" json:"subject"`
-	CourseNum   int    `db:"course_num" json:"course_num"`
-	Type        string `db:"type" json:"type"`
-	Title       string `db:"title" json:"title"`
-	AutoUpdated int    `db:"auto_updated" json:"-"`
+	CRN       int    `db:"crn" json:"crn"`
+	Subject   string `db:"subject" json:"subject"`
+	CourseNum int    `db:"course_num" json:"course_num"`
+	Type      string `db:"type" json:"type"`
+	Title     string `db:"title" json:"title"`
+
+	Description string `db:"description" json:"description"`
+	Capacity    int    `db:"capacity" json:"capacity"`
+	Enrolled    int    `db:"enrolled" json:"enrolled"`
+	Remaining   int    `db:"remaining" json:"remaining"`
+
+	AutoUpdated int `db:"auto_updated" json:"-"`
 }
 
 // Lecture is a lecture
@@ -99,16 +105,6 @@ type LabDisc struct {
 	Building     string    `db:"building_room" json:"building_room"`
 	InstructorID int       `db:"instructor_id" json:"instructor_id"`
 	AutoUpdated  int       `db:"auto_updated" json:"-"`
-}
-
-// Enrollment is the enrollment table
-type Enrollment struct {
-	CRN         int    `db:"crn" json:"crn" goqu:"skipupdate"`
-	Desc        string `db:"description" json:"description"`
-	Capacity    int    `db:"capacity" json:"capacity"`
-	Enrolled    int    `db:"enrolled" json:"enrolled"`
-	Remaining   int    `db:"remaining" json:"remaining"`
-	AutoUpdated int    `db:"auto_updated" json:"-"`
 }
 
 // Scan helper

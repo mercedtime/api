@@ -9,7 +9,8 @@ api.yaml
 mt.yml
 *env
 
-# Notes
+# Misc
+/vendor/
 TODO*
 
 # Data

@@ -51,7 +51,6 @@ func (a *App) lectureGroup(g *gin.RouterGroup) *gin.RouterGroup {
 	lect.GET("/:crn/exam", exam(a.DB))
 	lect.GET("/:crn/labs", labsForLecture(a.DB))
 	lect.GET("/:crn/instructor", instructorFromLectureCRN(a.DB))
-	lect.GET("/:crn/enrollment", lectureEnrollments(a))
 	lect.DELETE("/:crn", func(c *gin.Context) {
 		_, err := a.DB.Exec("DELETE FROM lectures WHERE crn = $1", c.MustGet("crn"))
 		if err != nil {

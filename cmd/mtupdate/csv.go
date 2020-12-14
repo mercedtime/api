@@ -2,17 +2,16 @@ package main
 
 import (
 	"encoding/csv"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strconv"
-	"sync"
 
 	"github.com/harrybrwn/edu/school/ucmerced/ucm"
 	"github.com/mercedtime/api/db/models"
+	"github.com/pkg/errors"
 )
 
 var csvOutDir = "data"
@@ -31,34 +30,21 @@ func courseTable(courses []*ucm.Course) error {
 		return err
 	}
 	defer f.Close()
-	w := csv.NewWriter(f)
-	var (
-		mact    = 0
-		maxSubj = 0
-	)
-	for _, c := range courses {
-		mact = max(len(c.Activity), mact)
-		maxSubj = max(len(c.Subject), maxSubj)
-		crs := models.Course{
-			CRN:       c.CRN,
-			Subject:   c.Subject,
-			CourseNum: c.Number,
-			Type:      c.Activity,
-			Title:     cleanTitle(c.Title),
-		}
-		row, err := models.ToCSVRow(crs)
-		if err != nil {
-			return err
-		}
-		err = w.Write(row)
-		if err != nil {
-			return err
-		}
-		w.Flush()
+	var w = csv.NewWriter(f)
+	table, err := GetCourseTable(courses, 200)
+	if err != nil {
+		return err
 	}
-	fmt.Printf(`Course Table:
-	 max activity: %d
-	 max subject:  %d`+"\n", mact, maxSubj)
+	for _, c := range table {
+		row, err := models.ToCSVRow(c)
+		if err != nil {
+			return err
+		}
+		if err = w.Write(row); err != nil {
+			return errors.Wrap(err, "could not write to csv file")
+		}
+	}
+	w.Flush()
 	return nil
 }
 
@@ -76,8 +62,7 @@ func lecturesTable(
 
 	var mtitle = 0
 	for _, c := range crs {
-		// Seminars are technically lectures i guess, they all have exams so...
-		if c.Activity != models.Lect || c.Activity == models.Seminar {
+		if c.Activity != models.Lect {
 			continue
 		}
 		if _, ok := lectures[c.CRN]; ok {
@@ -194,58 +179,6 @@ func examsTable(crs []*ucm.Course) error {
 			return err
 		}
 	}
-	w.Flush()
-	return nil
-}
-
-func enrollmentTable(crs []*ucm.Course) error {
-	f, err := csvfile("enrollment.csv")
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	var (
-		w       = csv.NewWriter(f)
-		mu      sync.Mutex
-		wg      sync.WaitGroup
-		workers = 200
-		courses = make(chan *ucm.Course)
-	)
-
-	go func() {
-		for _, c := range crs {
-			courses <- c
-		}
-		close(courses)
-	}()
-	wg.Add(workers)
-	for i := 0; i < workers; i++ {
-		go func() {
-			defer wg.Done()
-			for c := range courses {
-				desc, err := c.Info()
-				if err != nil {
-					log.Println("Error:", err)
-					return
-				}
-				row := [...]string{
-					str(c.CRN),
-					desc,
-					str(c.Capacity),
-					str(c.Enrolled),
-					str(c.SeatsOpen()),
-					"0",
-				}
-				mu.Lock() // make sure we only have one writer
-				err = w.Write(row[:])
-				mu.Unlock()
-				if err != nil {
-					log.Println("Error:", err)
-				}
-			}
-		}()
-	}
-	wg.Wait()
 	w.Flush()
 	return nil
 }

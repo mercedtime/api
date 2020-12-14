@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
@@ -110,17 +109,14 @@ func updateCourseTable(db *sql.DB, crs []*ucm.Course) error {
 		tmpTable = "_tmp_course"
 		rows     = make([]interface{}, 0, len(crs))
 	)
-	for _, c := range crs {
-		m := map[string]interface{}{
-			"crn":          c.CRN,
-			"subject":      c.Subject,
-			"course_num":   c.CourseNumber(),
-			"type":         c.Activity,
-			"title":        cleanTitle(c.Title),
-			"auto_updated": "1",
-		}
-		rows = append(rows, m)
+	courselist, err := GetCourseTable(crs, 200)
+	if err != nil {
+		return err
 	}
+	for _, c := range courselist {
+		rows = append(rows, c)
+	}
+
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
 		Isolation: sql.LevelDefault,
 		ReadOnly:  false,
@@ -128,6 +124,7 @@ func updateCourseTable(db *sql.DB, crs []*ucm.Course) error {
 	if err != nil {
 		return err
 	}
+
 	droptmp, err := createTmpTable(target, tx, tmpTable, rows)
 	defer func() {
 		e := droptmp()
@@ -143,6 +140,7 @@ func updateCourseTable(db *sql.DB, crs []*ucm.Course) error {
 	}
 
 	// New values
+	// auto_updated = 1 for new rows
 	q := "INSERT INTO " + target + `
 	SELECT * FROM ` + tmpTable + ` tmp
 	WHERE NOT EXISTS (
@@ -152,13 +150,39 @@ func updateCourseTable(db *sql.DB, crs []*ucm.Course) error {
 	if _, err = tx.Exec(q); err != nil {
 		return err
 	}
+
+	// auto_updated = 3 for enrollment count updates
+	q = fmt.Sprintf(`
+	UPDATE course
+	SET
+	  capacity = new.capacity,
+	  enrolled = new.enrolled,
+	  remaining = new.remaining,
+	  auto_updated = 3
+	FROM (
+	  SELECT * FROM %[1]s tmp
+	  WHERE NOT EXISTS (
+		SELECT * FROM %[2]s tab
+		WHERE
+		  tmp.capacity = tab.capacity AND
+		  tmp.enrolled = tab.enrolled AND
+		  tmp.remaining = tab.remaining
+	  )
+	) new
+	WHERE %[2]s.crn = new.crn`, tmpTable, target)
+	if _, err = tx.Exec(q); err != nil {
+		return err
+	}
+
+	// auto_updated = 2 for generate updates
 	q = `
-UPDATE ` + target + `
+UPDATE course
 SET
   subject = new.subject,
   course_num = new.course_num,
   type = new.type,
   title = new.title,
+  description = new.description,
   auto_updated = 2
 FROM (
   SELECT * FROM ` + tmpTable + ` tmp
@@ -168,168 +192,11 @@ FROM (
 	  tmp.subject = l.subject AND
 	  tmp.course_num = l.course_num AND
 	  tmp.type = l.type AND
-	  tmp.title = l.title
+	  tmp.title = l.title AND
+	  tmp.description = l.description
   )
 ) new WHERE ` + target + `.crn = new.crn`
 	if _, err = tx.Exec(q); err != nil {
-		return err
-	}
-	return err
-}
-
-func updateEnrollmentCounts(db *sql.DB, crs []*ucm.Course) (err error) {
-	var (
-		tmpTable = "_tmp_enrollments"
-		rows     = make([]interface{}, 0)
-	)
-	for _, c := range crs {
-		rows = append(rows, &models.Enrollment{
-			CRN:       c.CRN,
-			Capacity:  c.Capacity,
-			Enrolled:  c.Enrolled,
-			Remaining: c.SeatsOpen(),
-		})
-	}
-	if err != nil {
-		return err
-	}
-	// _, err = createTmpTable("enrollment", db, tmpTable, rows)
-	droptmp, err := createTmpTable("enrollment", db, tmpTable, rows)
-	defer func() {
-		e := droptmp()
-		if e != nil && err == nil {
-			err = e
-		}
-	}()
-	if err != nil {
-		return err
-	}
-	if _, err = db.Exec(`UPDATE _tmp_enrollments SET auto_updated = 1`); err != nil {
-		return err
-	}
-	var q string
-
-	// handles new crns
-	q = `
-	INSERT INTO enrollment
-	SELECT * FROM _tmp_enrollments
-	WHERE crn NOT IN (
-	  SELECT crn FROM enrollment
-	)`
-	_, err = db.Exec(q)
-	if err != nil {
-		return err
-	}
-
-	// handle updated capacity
-	q = `
-	UPDATE enrollment
-	SET
-	  capacity = tmp.capacity,
-	  auto_updated = 1
-	FROM _tmp_enrollments tmp
-	WHERE
-		enrollment.crn = tmp.crn AND
-		enrollment.capacity != tmp.capacity`
-	_, err = db.Exec(q)
-	if err != nil {
-		return err
-	}
-	// handle updated enrollment numbers
-	q = `
-	UPDATE Enrollment
-	SET
-		enrolled    = tmp.enrolled,
-		remaining   = tmp.remaining,
-		auto_updated = 2
-	FROM _tmp_enrollments tmp
-	WHERE
-	  enrollment.crn = tmp.crn AND
-	  (
-	    enrollment.enrolled != tmp.enrolled OR
-		enrollment.remaining != tmp.remaining
-	  )`
-	_, err = db.Exec(q)
-	if err != nil {
-		return err
-	}
-	return err
-}
-
-func updateEnrollment(db *sql.DB, crs []*ucm.Course, outerWg *sync.WaitGroup) (err error) {
-	var (
-		workers     = 300
-		wg          sync.WaitGroup
-		rows        = make([]interface{}, 0)
-		courses     = make(chan *ucm.Course)
-		enrollments = make(chan *models.Enrollment)
-		tmpTable    = "_tmp_enrollments"
-		insert      = goqu.Insert(tmpTable)
-	)
-	defer outerWg.Done()
-	// Create the temp table
-	go func() {
-		for _, c := range crs {
-			courses <- c
-		}
-		close(courses)
-	}()
-
-	wg.Add(workers)
-	go func() {
-		wg.Wait()
-		close(enrollments)
-	}()
-	for i := 0; i < workers; i++ {
-		go func() {
-			defer wg.Done()
-			for c := range courses {
-				desc, err := c.Info()
-				if err != nil {
-					fmt.Println("Error:", err)
-					return
-				}
-				enrollments <- &models.Enrollment{
-					CRN: c.CRN, Desc: desc,
-					Capacity:  c.Capacity,
-					Enrolled:  c.Enrolled,
-					Remaining: c.SeatsOpen(),
-				}
-			}
-		}()
-	}
-	for e := range enrollments {
-		rows = append(rows, e)
-	}
-	q, _, err := insert.Rows(rows...).ToSQL()
-	if err != nil {
-		return err
-	}
-	_, err = db.Exec("SELECT * INTO _tmp_enrollments FROM Enrollment LIMIT 0")
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_, e := db.Exec("DROP TABLE _tmp_enrollments")
-		if e != nil && err == nil {
-			err = e
-		}
-	}()
-	if _, err = db.Exec(q); err != nil {
-		return err
-	}
-	q = `
-UPDATE Enrollment
-SET
-	description = tmp.description,
-	capacity    = tmp.capacity,
-	enrolled    = tmp.enrolled,
-	remaining   = tmp.remaining,
-	auto_updated = 1
-FROM _tmp_enrollments tmp
-WHERE Enrollment.CRN = tmp.CRN`
-	_, err = db.Exec(q)
-	if err != nil {
 		return err
 	}
 	return err

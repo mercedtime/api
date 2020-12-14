@@ -2,7 +2,6 @@ package app
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 	"strings"
 
@@ -109,7 +108,7 @@ func exam(db *sqlx.DB) gin.HandlerFunc {
 	return getFromCRN(db, examQuery, &e)
 }
 
-func getLectureInstructors(db *sql.DB, crn int) ([]*models.Instructor, error) {
+func getLectureInstructors(db *sqlx.DB, crn int) ([]*models.Instructor, error) {
 	var (
 		insts = make([]*models.Instructor, 0)
 		query = `
@@ -137,28 +136,17 @@ func getLectureInstructors(db *sql.DB, crn int) ([]*models.Instructor, error) {
 
 func instructorFromLectureCRN(db *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		insts, err := getLectureInstructors(db.DB, c.GetInt("crn"))
+		insts, err := getLectureInstructors(db, c.GetInt("crn"))
+		if err == sql.ErrNoRows {
+			c.JSON(404, &Error{
+				Msg: "could not find that instructor",
+			})
+			return
+		}
 		if err != nil {
 			senderr(c, err, 500)
 			return
 		}
 		c.JSON(200, insts)
-	}
-}
-
-func lectureEnrollments(a *App) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var resp models.Enrollment
-		err := a.DB.Get(&resp, "SELECT * FROM enrollment WHERE crn = $1", c.GetInt("crn"))
-		if err == sql.ErrNoRows {
-			c.JSON(404, ErrStatus(404, "could not find enrollments for this course"))
-			return
-		}
-		if err != nil {
-			c.JSON(500, ErrStatus(500, "did not find enrollments"))
-			fmt.Println(err)
-			return
-		}
-		c.JSON(200, resp)
 	}
 }

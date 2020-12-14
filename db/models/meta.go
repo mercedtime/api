@@ -22,7 +22,7 @@ Outer:
 	for i := 0; i < ty.NumField(); i++ {
 		fld := ty.Field(i)
 		var tag string
-		for _, t := range []string{"db", "json", "csv"} {
+		for _, t := range []string{"db", "json"} {
 			tag = fld.Tag.Get(t)
 			if tag == "-" {
 				continue Outer
@@ -64,7 +64,7 @@ func ToCSVRow(v interface{}) ([]string, error) {
 	for i := 0; i < val.NumField(); i++ {
 		f := val.Field(i)
 		feildType := typ.Field(i)
-		if feildType.Tag.Get("db") == "-" {
+		if feildType.Tag.Get("db") == "-" || feildType.Tag.Get("csv") == "-" {
 			continue
 		}
 
@@ -73,6 +73,7 @@ func ToCSVRow(v interface{}) ([]string, error) {
 		case reflect.Ptr:
 			f = f.Elem()
 			goto KindCheck
+
 		case reflect.String:
 			s = f.String()
 		case reflect.Int:

@@ -1,7 +1,6 @@
 DROP TABLE
 IF EXISTS
     course,
-    enrollment,
     exam,
     instructor,
     aux,
@@ -23,20 +22,13 @@ CREATE TABLE course (
     type       VARCHAR(4),
     title      VARCHAR(1024),
 
-    auto_updated INTEGER DEFAULT 0,
-    PRIMARY KEY(crn)
-);
-
--- TODO merge this table with course
-CREATE TABLE enrollment (
-    crn         INTEGER NOT NULL,
     description TEXT,
     capacity    INTEGER,
     enrolled    INTEGER,
     remaining   INTEGER,
 
     auto_updated INTEGER DEFAULT 0,
-    PRIMARY KEY (crn)
+    PRIMARY KEY(crn)
 );
 
 CREATE TABLE lectures (
@@ -123,11 +115,6 @@ CREATE VIEW counts AS
     FROM aux
    UNION
   SELECT
-        'enrollment' AS name,
-        COUNT(*)
-    FROM enrollment
-   UNION
-  SELECT
          'instructor' AS name,
          COUNT(*)
     FROM instructor
@@ -150,17 +137,13 @@ SELECT
     c.type,
 
     c.auto_updated as course_updated,
-    l.auto_updated as lecture_updated,
-    e.auto_updated as enrollment_updated
+    l.auto_updated as lecture_updated
 FROM
     course c,
-    enrollment e,
     lectures l
 WHERE
-    c.crn = e.crn AND
     c.crn = l.crn AND
     (
         c.auto_updated != 0 OR
-        l.auto_updated != 0 OR
-        e.auto_updated != 0
+        l.auto_updated != 0
     );

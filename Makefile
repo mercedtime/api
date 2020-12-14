@@ -11,6 +11,9 @@ clean:
 	if [ -x ./mt ]; then $(RM) ./mtupdate; fi
 	$(RM) db/data/*.csv *.test
 
+gen:
+	go generate ./...
+
 test:
 	@env $(shell cat ../.env) go test ./... \
 		-cover -coverprofile=coverage.txt \
@@ -19,8 +22,10 @@ test:
 coverage:
 	go tool cover -html=coverage.txt
 
-test-image:
+build-test-image:
 	docker image build -t mt-api.tests . -f ./docker/Dockerfile.tests
+run-test-image:
+	docker container run --rm -it mt-api.test
 
 
 .PHONY: build clean
