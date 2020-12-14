@@ -15,6 +15,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	"github.com/mercedtime/api/db/models"
+	"github.com/mercedtime/api/users"
 )
 
 func testConfig() *Config {
@@ -47,7 +48,6 @@ func TestListEndpoints(t *testing.T) {
 	for _, tst := range []struct {
 		Path          string
 		Limit, Offset int
-		ShouldFail    bool
 		Code          int
 		Query         url.Values
 	}{
@@ -109,6 +109,78 @@ func TestListEndpoints(t *testing.T) {
 	}
 }
 
+func TestLectureRoutes(t *testing.T) {
+	var (
+		crn int
+		app = testApp(t)
+	)
+	row := app.DB.QueryRow(`select crn from lectures
+							order by random() limit 1`)
+	row.Scan(&crn)
+	for _, tst := range []struct {
+		Path string
+		Code int
+	}{
+		{Path: fmt.Sprintf("/lecture/%d", crn), Code: 200},
+		{Path: fmt.Sprintf("/lecture/%d/exam", crn), Code: 200},
+		{Path: fmt.Sprintf("/lecture/%d/labs", crn), Code: 200},
+		{Path: fmt.Sprintf("/lecture/%d/instructor", crn), Code: 200},
+		{Path: fmt.Sprintf("/lecture/%d/enrollment", crn), Code: 200},
+		{Path: "/lecture/999999/enrollment", Code: 404},
+	} {
+		r := &http.Request{
+			Method: "GET",
+			Proto:  "HTTP/1.1",
+			URL:    &url.URL{Path: tst.Path},
+		}
+		w := httptest.NewRecorder()
+		app.ServeHTTP(w, r)
+		if tst.Code != w.Code {
+			t.Errorf("'%s' bad status code: got %d, want %d", tst.Path, w.Code, tst.Code)
+			continue
+		}
+	}
+}
+
+func TestInstructorRoutes(t *testing.T) {
+	var (
+		id  int
+		app = testApp(t)
+	)
+	row := app.DB.QueryRow(`select id from instructor
+							order by random() limit 1`) // get a random crn
+	row.Scan(&id)
+	for _, tst := range []struct {
+		Path  string
+		Code  int
+		Query url.Values
+	}{
+		{Path: fmt.Sprintf("/instructor/%d", id)},
+		{Path: "/instructor/999999", Code: 404},
+		// {Path: fmt.Sprintf("/instructor/%d/courses", id)},
+		// {Path: "/instructor/999999/courses", Code: 404},
+	} {
+		r := &http.Request{
+			Method: "GET",
+			Proto:  "HTTP/1.1",
+			URL: &url.URL{
+				Path: tst.Path,
+			},
+		}
+		if tst.Code == 0 {
+			tst.Code = 200
+		}
+
+		w := httptest.NewRecorder()
+		app.ServeHTTP(w, r)
+
+		if w.Code != tst.Code {
+			t.Errorf("'%s' bad status code: got %d, want %d", tst.Path, w.Code, tst.Code)
+			continue
+		}
+	}
+}
+
 func TestPostUser(t *testing.T) {
 	a := testApp(t)
 	ts := httptest.NewServer(a.Engine)
@@ -125,6 +197,38 @@ func TestPostUser(t *testing.T) {
 	m := make(map[string]interface{})
 	if err = json.NewDecoder(resp.Body).Decode(&m); err != nil {
 		t.Fatal(err)
+	}
+
+	resp, err = ts.Client().Post(ts.URL+"/user", "application/json", strings.NewReader(`
+		{"name":"testuser","email":"test@test.com","password":"password1"}
+	`))
+	if err != nil {
+		t.Error(err)
+	}
+	u, err := a.GetUser(users.User{Name: "testuser", Email: "test@test.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err = a.GetUser(users.User{ID: u.ID})
+	if err != nil {
+		t.Error(err)
+	}
+	url, err := url.Parse(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	url.Path = fmt.Sprintf("/user/%d", u.ID)
+	resp, err = ts.Client().Do(&http.Request{
+		Method: "DELETE",
+		Proto:  "HTTP/1.1",
+		URL:    url,
+	})
+	if err != nil {
+		t.Error(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Errorf("did not delete user; %s", resp.Status)
 	}
 }
 

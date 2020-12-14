@@ -8,29 +8,31 @@ import (
 	"github.com/mercedtime/api/db/models"
 )
 
-func instructorFromID(db *sqlx.DB) gin.HandlerFunc {
+func instructorFromID(app *App) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := c.Params.Get("id")
 		if !ok {
 			c.JSON(http.StatusBadRequest, map[string]string{"error": "no instructor id"})
 			return
 		}
-		var inst models.Instructor
-		row := db.QueryRow(
-			"SELECT id, name FROM instructor WHERE id = $1",
-			id,
-		)
-		if err := row.Scan(&inst.ID, &inst.Name); err != nil {
-			c.JSON(500, NewErr(err.Error()))
+		in, err := app.GetInstructor(id)
+		if err != nil {
+			senderr(c, err, 404)
 			return
 		}
-		c.JSON(200, &inst)
+		if in == nil {
+			c.JSON(404, ErrStatus(404, "could not find instructor"))
+		}
+		c.JSON(200, in)
 	}
 }
 
+// TODO figure this out, should not only query lectures
+// because there are TAs also.
 func instructorCourses(db *sqlx.DB) gin.HandlerFunc {
 	var query = `
-	  SELECT * FROM lectures
+	  SELECT * FROM
+	  	lectures
 	  WHERE
 	    instructor_id = $1`
 	return func(c *gin.Context) {
@@ -45,6 +47,10 @@ func instructorCourses(db *sqlx.DB) gin.HandlerFunc {
 		}
 		if err := db.Select(&list, query, id); err != nil {
 			c.JSON(500, NewErr(err.Error()))
+		}
+		if len(list) == 0 {
+			c.JSON(404, ErrStatus(404, "could not find resources"))
+			return
 		}
 		c.JSON(200, list)
 	}

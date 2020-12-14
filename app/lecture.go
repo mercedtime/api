@@ -1,49 +1,15 @@
 package app
 
 import (
+	"database/sql"
+	"fmt"
 	"log"
-	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
-	sql "github.com/jmoiron/sqlx"
 	"github.com/mercedtime/api/db/models"
 )
-
-// LectureGroup returns the router group for all the lecture routes.
-func (a *App) LectureGroup(g *gin.RouterGroup) *gin.RouterGroup {
-	lect := g.Group("/lecture", func(c *gin.Context) {
-		crnStr, ok := c.Params.Get("crn")
-		if !ok {
-			c.JSON(400, ErrStatus(400, "no crn given"))
-			return
-		}
-		crn, err := strconv.Atoi(crnStr)
-		if err != nil {
-			c.JSON(400, &Error{Msg: "crn given is not a number"})
-			return
-		}
-		c.Set("crn", crn)
-		c.Next()
-	})
-
-	lect.GET("/:crn", lecture(a.DB))
-	lect.GET("/:crn/exam", exam(a.DB))
-	lect.GET("/:crn/labs", labsForLecture(a.DB))
-	lect.GET("/:crn/instructor", instructorFromLectureCRN(a.DB))
-	lect.GET("/:crn/enrollment", func(c *gin.Context) {
-		c.Status(http.StatusNotImplemented)
-	})
-	lect.DELETE("/:crn", func(c *gin.Context) {
-		_, err := a.DB.Exec("DELETE FROM lectures WHERE crn = $1", c.MustGet("crn"))
-		if err != nil {
-			senderr(c, err, 500)
-		}
-	})
-	return lect
-}
 
 // ListInstructors returns a handler func that
 // lists the isntructors in the database. Requires that
@@ -169,13 +135,30 @@ func getLectureInstructors(db *sql.DB, crn int) ([]*models.Instructor, error) {
 	return insts, nil
 }
 
-func instructorFromLectureCRN(db *sql.DB) gin.HandlerFunc {
+func instructorFromLectureCRN(db *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		insts, err := getLectureInstructors(db, c.GetInt("crn"))
+		insts, err := getLectureInstructors(db.DB, c.GetInt("crn"))
 		if err != nil {
 			senderr(c, err, 500)
 			return
 		}
 		c.JSON(200, insts)
+	}
+}
+
+func lectureEnrollments(a *App) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var resp models.Enrollment
+		err := a.DB.Get(&resp, "SELECT * FROM enrollment WHERE crn = $1", c.GetInt("crn"))
+		if err == sql.ErrNoRows {
+			c.JSON(404, ErrStatus(404, "could not find enrollments for this course"))
+			return
+		}
+		if err != nil {
+			c.JSON(500, ErrStatus(500, "did not find enrollments"))
+			fmt.Println(err)
+			return
+		}
+		c.JSON(200, resp)
 	}
 }

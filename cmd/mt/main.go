@@ -65,7 +65,6 @@ func run() error {
 
 	v1 := r.Group("/api/v1")
 	app.RegisterRoutes(v1)
-	app.LectureGroup(v1)
 	r.POST("/login", auth.LoginHandler)
 
 	protect := auth.MiddlewareFunc()

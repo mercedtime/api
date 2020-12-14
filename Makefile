@@ -9,7 +9,7 @@ clean:
 	if [ -x $(BIN) ]; then $(RM) $(BIN); fi
 	if [ -x ./mtupdate ]; then $(RM) ./mtupdate; fi
 	if [ -x ./mt ]; then $(RM) ./mtupdate; fi
-	# $(RM) db/data/*.csv *.test
+	$(RM) db/data/*.csv *.test
 
 test:
 	@env $(shell cat ../.env) go test ./... \

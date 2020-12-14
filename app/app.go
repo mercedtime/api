@@ -14,9 +14,10 @@ import (
 
 // App is the main app
 type App struct {
-	DB     *sql.DB
-	Config *Config
-	Engine *gin.Engine
+	DB        *sql.DB
+	Config    *Config
+	Engine    *gin.Engine
+	Protected gin.HandlerFunc
 
 	jwtIdentidyKey string
 }
@@ -40,13 +41,9 @@ func (a *App) GetUser(u users.User) (*users.User, error) {
 // GetInstructor will get an instructor by id
 func (a *App) GetInstructor(id interface{}) (*models.Instructor, error) {
 	var inst models.Instructor
-	err := a.DB.Get(
-		&inst,
-		"SELECT * FROM instructor WHERE id = $1",
-		id,
-	)
-	if err != nil {
-		return nil, NewErr("could not find instructor")
+	row := a.DB.QueryRowx("SELECT * FROM instructor WHERE id = $1", id)
+	if err := row.StructScan(&inst); err != nil {
+		return nil, ErrStatus(500, "could not get instructor")
 	}
 	return &inst, nil
 }
@@ -81,14 +78,6 @@ func ErrStatus(status int, msg string) error {
 
 func (e *Error) Error() string {
 	return e.Msg
-}
-
-// JSON converts the error type into a json serializable object
-func (e *Error) JSON() map[string]interface{} {
-	return map[string]interface{}{
-		"error":  e.Msg,
-		"status": e.Status,
-	}
 }
 
 // LoggerConfig is a config for gin loggers that has cleaner output
