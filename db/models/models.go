@@ -9,7 +9,7 @@ import (
 
 // Activity types for any given course
 const (
-	Lecture    = "LECT"
+	Lect       = "LECT"
 	Discussion = "DISC"
 	Lab        = "LAB"
 	Seminar    = "SEM"
@@ -25,33 +25,50 @@ type Scanable interface {
 	Scan(...interface{}) error
 }
 
+// Date is an alias for time.Time
+type Date time.Time
+
+func (d *Date) String() string {
+	return time.Time(*d).Format(time.RFC3339)
+}
+
+// Time is an alias for time.Time
+type Time time.Time
+
+func (t *Time) String() string {
+	return time.Time(*t).Format("15:04:05")
+}
+
 // Default date and time formats
 var (
 	SQLiteTimeFormat = "15:04:05"
 
 	TimeFormat = "15:04:05"
+	// TimeFormat = time.RFC3339
 	DateFormat = time.RFC3339
 )
 
 // Course is a course
 type Course struct {
-	CRN       int    `db:"crn" json:"crn"`
-	Subject   string `db:"subject" json:"subject"`
-	CourseNum int    `db:"course_num" json:"course_num"`
-	Type      string `db:"type" json:"type"`
-	Title     string `db:"title" json:"title"`
+	CRN         int    `db:"crn" json:"crn"`
+	Subject     string `db:"subject" json:"subject"`
+	CourseNum   int    `db:"course_num" json:"course_num"`
+	Type        string `db:"type" json:"type"`
+	Title       string `db:"title" json:"title"`
+	AutoUpdated int    `db:"auto_updated" json:"-"`
 }
 
-// Lect is a lecture
-type Lect struct {
-	CRN          int       `db:"crn" csv:"crn" json:"crn"`
-	Units        int       `db:"units" csv:"units" json:"units"`
+// Lecture is a lecture
+type Lecture struct {
+	CRN          int       `db:"crn" csv:"crn"`
+	Units        int       `db:"units" csv:"units"`
 	Days         string    `db:"days" csv:"days" json:"days"`
 	StartTime    time.Time `db:"start_time" csv:"start_time" json:"start_time"`
 	EndTime      time.Time `db:"end_time" csv:"end_time" json:"end_time"`
 	StartDate    time.Time `db:"start_date" csv:"start_date" json:"start_date"`
 	EndDate      time.Time `db:"end_date" csv:"end_date" json:"end_date"`
 	InstructorID int       `db:"instructor_id" csv:"instructor_id" json:"instructor_id"`
+	AutoUpdated  int       `db:"auto_updated" json:"-"`
 }
 
 // Exam is an exam
@@ -64,8 +81,9 @@ type Exam struct {
 
 // Instructor is the instructor table
 type Instructor struct {
-	ID   int    `db:"id" json:"id"`
-	Name string `db:"name" json:"name"`
+	ID          int    `db:"id" json:"id"`
+	Name        string `db:"name" json:"name"`
+	AutoUpdated int    `db:"auto_updated" json:"-"`
 }
 
 // LabDisc is a lab or a discussion
@@ -80,20 +98,22 @@ type LabDisc struct {
 	EndTime      time.Time `db:"end_time" json:"end_time"`
 	Building     string    `db:"building_room" json:"building_room"`
 	InstructorID int       `db:"instructor_id" json:"instructor_id"`
+	AutoUpdated  int       `db:"auto_updated" json:"-"`
 }
 
 // Enrollment is the enrollment table
 type Enrollment struct {
-	CRN       int    `db:"crn" json:"crn" goqu:"skipupdate"`
-	Desc      string `db:"description" json:"description"`
-	Capacity  int    `db:"capacity" json:"capacity"`
-	Enrolled  int    `db:"enrolled" json:"enrolled"`
-	Remaining int    `db:"remaining" json:"remaining"`
+	CRN         int    `db:"crn" json:"crn" goqu:"skipupdate"`
+	Desc        string `db:"description" json:"description"`
+	Capacity    int    `db:"capacity" json:"capacity"`
+	Enrolled    int    `db:"enrolled" json:"enrolled"`
+	Remaining   int    `db:"remaining" json:"remaining"`
+	AutoUpdated int    `db:"auto_updated" json:"-"`
 }
 
 // Scan helper
 // SELECT crn,course_num,title,units,activity,days,start_time,end_time,start_date,end_date,instructor_id
-func (l *Lect) Scan(sc Scanable) error {
+func (l *Lecture) Scan(sc Scanable) error {
 	var (
 		stime, etime string
 		sdate, edate string
@@ -107,16 +127,17 @@ func (l *Lect) Scan(sc Scanable) error {
 		&sdate,
 		&edate,
 		&l.InstructorID,
+		&l.AutoUpdated,
 	)
 	if err != nil {
 		return err
 	}
 
-	l.StartTime, err = time.Parse(TimeFormat, stime)
+	l.StartTime, err = time.Parse(DateFormat, stime)
 	if err != nil {
 		return err
 	}
-	l.EndTime, err = time.Parse(TimeFormat, etime)
+	l.EndTime, err = time.Parse(DateFormat, etime)
 	if err != nil {
 		return err
 	}
@@ -144,11 +165,11 @@ func (e *Exam) Scan(sc Scanable) error {
 	if err != nil {
 		return err
 	}
-	e.StartTime, err = time.Parse(TimeFormat, startTime)
+	e.StartTime, err = time.Parse(DateFormat, startTime)
 	if err != nil {
 		return err
 	}
-	e.EndTime, err = time.Parse(TimeFormat, endTime)
+	e.EndTime, err = time.Parse(DateFormat, endTime)
 	if err != nil {
 		return err
 	}
@@ -169,16 +190,17 @@ func (l *LabDisc) Scan(sc Scanable) error {
 		&etime,
 		&l.Building,
 		&l.InstructorID,
+		&l.AutoUpdated,
 	)
 	if err != nil {
 		return err
 	}
 
-	l.StartTime, err = time.Parse(TimeFormat, stime)
+	l.StartTime, err = time.Parse(DateFormat, stime)
 	if err != nil {
 		return err
 	}
-	l.EndTime, err = time.Parse(TimeFormat, etime)
+	l.EndTime, err = time.Parse(DateFormat, etime)
 	if err != nil {
 		return err
 	}

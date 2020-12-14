@@ -15,7 +15,11 @@ import (
 	"github.com/mercedtime/api/db/models"
 )
 
-var mustAlsoRegex = regexp.MustCompile(`Must Also.*$`)
+var (
+	// TimeFormat is a time format
+	TimeFormat    = "15:04:05"
+	mustAlsoRegex = regexp.MustCompile(`Must Also.*$`)
+)
 
 func cleanTitle(title string) string {
 	title = mustAlsoRegex.ReplaceAllString(title, "")
@@ -113,7 +117,7 @@ func updateCourseTable(db *sql.DB, crs []*ucm.Course) error {
 			"course_num":   c.CourseNumber(),
 			"type":         c.Activity,
 			"title":        cleanTitle(c.Title),
-			"auto_updated": "0",
+			"auto_updated": "1",
 		}
 		rows = append(rows, m)
 	}
@@ -155,7 +159,7 @@ SET
   course_num = new.course_num,
   type = new.type,
   title = new.title,
-  auto_updated = 1
+  auto_updated = 2
 FROM (
   SELECT * FROM ` + tmpTable + ` tmp
   WHERE NOT EXISTS (
@@ -342,7 +346,7 @@ func updateLectureTable(
 	)
 
 	for _, c := range crs {
-		if c.Activity != models.Lecture {
+		if c.Activity != models.Lect {
 			continue
 		}
 		instructorID = 0
@@ -363,8 +367,8 @@ func updateLectureTable(
 			"crn":           c.CRN,
 			"units":         c.Units,
 			"days":          str(c.Days),
-			"start_time":    c.Time.Start.Format(models.TimeFormat),
-			"end_time":      c.Time.End.Format(models.TimeFormat),
+			"start_time":    c.Time.Start.Format(TimeFormat),
+			"end_time":      c.Time.End.Format(TimeFormat),
 			"start_date":    c.Date.Start.Format(models.DateFormat),
 			"end_date":      c.Date.End.Format(models.DateFormat),
 			"instructor_id": instructorID,
@@ -438,7 +442,7 @@ FROM (
 func updateLabsTable(db *sql.DB, sch ucm.Schedule, instructors map[string]*instructorMeta) (err error) {
 	var rows = make([]interface{}, 0, len(sch))
 	for _, c := range sch.Ordered() {
-		if c.Activity == models.Lecture {
+		if c.Activity == models.Lect {
 			continue
 		}
 		var lectCRN int
@@ -461,8 +465,8 @@ func updateLabsTable(db *sql.DB, sch ucm.Schedule, instructors map[string]*instr
 			"section":       c.Section,
 			"units":         c.Units,
 			"days":          str(c.Days),
-			"start_time":    c.Time.Start.Format(models.TimeFormat),
-			"end_time":      c.Time.End.Format(models.TimeFormat),
+			"start_time":    c.Time.Start.Format(TimeFormat),
+			"end_time":      c.Time.End.Format(TimeFormat),
 			"building_room": c.BuildingRoom,
 			"instructor_id": instructorID,
 			"auto_updated":  1,
@@ -593,8 +597,8 @@ func updateExamTable(db *sql.DB, courses []*ucm.Course) error {
 		rows = append(rows, map[string]interface{}{
 			"crn":        e.CRN,
 			"date":       e.Date.Format(models.DateFormat),
-			"start_time": e.StartTime.Format(models.TimeFormat),
-			"end_time":   e.EndTime.Format(models.TimeFormat),
+			"start_time": e.StartTime.Format(TimeFormat),
+			"end_time":   e.EndTime.Format(TimeFormat),
 		})
 	}
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{

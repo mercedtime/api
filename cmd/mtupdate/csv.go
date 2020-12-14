@@ -46,14 +46,11 @@ func courseTable(courses []*ucm.Course) error {
 			Type:      c.Activity,
 			Title:     cleanTitle(c.Title),
 		}
-		err = w.Write([]string{
-			strconv.FormatInt(int64(crs.CRN), 10),
-			crs.Subject,
-			str(crs.CourseNum),
-			crs.Type,
-			crs.Title,
-			"0",
-		})
+		row, err := models.ToCSVRow(crs)
+		if err != nil {
+			return err
+		}
+		err = w.Write(row)
 		if err != nil {
 			return err
 		}
@@ -80,7 +77,7 @@ func lecturesTable(
 	var mtitle = 0
 	for _, c := range crs {
 		// Seminars are technically lectures i guess, they all have exams so...
-		if c.Activity != models.Lecture || c.Activity == models.Seminar {
+		if c.Activity != models.Lect || c.Activity == models.Seminar {
 			continue
 		}
 		if _, ok := lectures[c.CRN]; ok {
@@ -97,7 +94,7 @@ func lecturesTable(
 		mtitle = max(mtitle, len(c.Title))
 		// For type safety and so i get error messages
 		// when the schema changes
-		l := models.Lect{
+		l := models.Lecture{
 			CRN:          c.CRN,
 			Units:        c.Units,
 			Days:         str(c.Days),
@@ -107,21 +104,10 @@ func lecturesTable(
 			EndDate:      c.Date.End,
 			InstructorID: instructorID,
 		}
-		// row, err := models.ToCSVRow(&l)
-		// if err != nil {
-		// 	log.Println("Could not create lecture row:", err)
-		// 	continue
-		// }
-		row := [...]string{
-			str(l.CRN),
-			str(l.Units),
-			l.Days,
-			l.StartTime.Format(models.TimeFormat),
-			l.EndTime.Format(models.TimeFormat),
-			l.StartDate.Format(models.DateFormat),
-			l.EndDate.Format(models.DateFormat),
-			str(l.InstructorID),
-			"0",
+		row, err := models.ToCSVRow(&l)
+		if err != nil {
+			log.Println("Could not create lecture row:", err)
+			continue
 		}
 		if err = w.Write(row[:]); err != nil {
 			return nil, err
@@ -141,7 +127,7 @@ func labsDiscTable(sch ucm.Schedule, instructors map[string]*instructorMeta) err
 	defer f.Close()
 	w := csv.NewWriter(f)
 	for _, c := range sch.Ordered() {
-		if c.Activity == models.Lecture {
+		if c.Activity == models.Lect {
 			continue
 		}
 		var lectCRN int
@@ -171,17 +157,9 @@ func labsDiscTable(sch ucm.Schedule, instructors map[string]*instructorMeta) err
 			Building:     c.BuildingRoom,
 			InstructorID: instructorID,
 		}
-		row := [...]string{
-			str(l.CRN),
-			str(l.CourseCRN),
-			l.Section,
-			str(l.Units),
-			l.Days,
-			l.StartTime.Format(models.TimeFormat),
-			l.EndTime.Format(models.TimeFormat),
-			l.Building,
-			str(l.InstructorID),
-			"0",
+		row, err := models.ToCSVRow(l)
+		if err != nil {
+			return err
 		}
 		if err = w.Write(row[:]); err != nil {
 			return err
@@ -202,11 +180,15 @@ func examsTable(crs []*ucm.Course) error {
 		if c.Exam == nil {
 			continue
 		}
-		row := [...]string{
-			str(c.CRN),
-			c.Exam.Date.Format(models.DateFormat),
-			c.Time.Start.Format(models.TimeFormat),
-			c.Time.End.Format(models.TimeFormat),
+		e := models.Exam{
+			CRN:       c.CRN,
+			Date:      c.Exam.Date,
+			StartTime: c.Time.Start,
+			EndTime:   c.Time.End,
+		}
+		row, err := models.ToCSVRow(e)
+		if err != nil {
+			return err
 		}
 		if err = w.Write(row[:]); err != nil {
 			return err

@@ -9,7 +9,7 @@ func TestCSVRow(t *testing.T) {
 	now := time.Now()
 	exam := &Exam{
 		CRN:  123456,
-		Date: now, StartTime: time.Now(), EndTime: time.Now()}
+		Date: now, StartTime: now, EndTime: now}
 	row, err := ToCSVRow(exam)
 	if err != nil {
 		t.Fatal(err)
@@ -19,6 +19,9 @@ func TestCSVRow(t *testing.T) {
 	}
 	if row[1] != now.Format(DateFormat) {
 		t.Errorf("bad time string: got %v, want %v", row[1], now.String())
+	}
+	if row[2] != now.Format(TimeFormat) {
+		t.Errorf("bad time string: got %v, want %v", row[1], now.Format(TimeFormat))
 	}
 
 	l := Course{

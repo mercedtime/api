@@ -12,9 +12,10 @@ import (
 
 // Config is the application config struct
 type Config struct {
-	Host string `config:"host" default:"0.0.0.0"`
-	Port int64  `config:"port" default:"8080"`
-	Mode string `config:"mode" default:"debug"`
+	Host   string `config:"host" default:"0.0.0.0"`
+	Port   int64  `config:"port" default:"8080"`
+	Mode   string `config:"mode" default:"debug"`
+	Secret []byte `config:"secret" env:"JWT_SECRET"`
 
 	Database struct {
 		Driver   string `config:"driver"`
@@ -22,6 +23,7 @@ type Config struct {
 		Port     int    `config:"port" default:"5432" env:"POSTGRES_PORT"`
 		User     string `config:"user"`
 		Password string `config:"password" env:"POSTGRES_PASSWORD"`
+
 		// Database name or database filename
 		Name string `config:"name"`
 		SSL  string `config:"ssl" default:"disable"`
@@ -83,13 +85,33 @@ func (c *Config) GetDSN() string {
 }
 
 // Address formats the server address:port from the app config
-func Address() string {
+func (c *Config) Address() string {
 	return net.JoinHostPort(
 		config.GetString("host"),
-		strconv.FormatInt(int64(config.GetInt("port")), 10))
+		strconv.FormatInt(int64(config.GetInt("port")), 10),
+	)
 }
 
 func exists(f string) bool {
 	_, err := os.Stat(f)
 	return !os.IsNotExist(err)
+}
+
+func statusColor(status int) string {
+	var id int
+	switch {
+	case status == 0:
+		id = 0
+	case status < 300:
+		id = 32
+	case status < 400:
+		id = 34
+	case status < 500:
+		id = 33
+	case status < 600:
+		id = 31
+	default:
+		id = 0
+	}
+	return fmt.Sprintf("\033[%d;1m", id)
 }

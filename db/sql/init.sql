@@ -39,7 +39,6 @@ CREATE TABLE enrollment (
     PRIMARY KEY (crn)
 );
 
-
 CREATE TABLE lectures (
     crn           INTEGER NOT NULL,
     units         INTEGER,
@@ -89,7 +88,6 @@ CREATE TABLE exam (
     date       DATE,
     start_time TIME,
     end_time   TIME,
-
     PRIMARY KEY (crn)
 );
 
@@ -98,15 +96,25 @@ CREATE TABLE prerequisites (
     prereq_crn INTEGER
 );
 
+CREATE TABLE users (
+    id SERIAL            NOT NULL,
+    name VARCHAR(255)    UNIQUE NOT NULL,
+    email VARCHAR(128)   UNIQUE NOT NULL,
+    is_admin             BOOLEAN DEFAULT 'f',
+    created_at TIMESTAMP DEFAULT now(),
+    hash VARCHAR(72)     UNIQUE NOT NULL, -- password hash
+    PRIMARY KEY(id)
+);
+
 CREATE VIEW counts AS
   SELECT
-        'course' AS name,
-        count(*)
+         'course' AS name,
+         COUNT(*)
     FROM course
    UNION
   SELECT
-        'lecture' AS name,
-        count(*)
+         'lecture' AS name,
+         COUNT(*)
     FROM lectures
    UNION
   SELECT
@@ -116,23 +124,30 @@ CREATE VIEW counts AS
    UNION
   SELECT
         'enrollment' AS name,
-        count(*)
+        COUNT(*)
     FROM enrollment
    UNION
-  SELECT 'instructor' AS name, count(*)
+  SELECT
+         'instructor' AS name,
+         COUNT(*)
     FROM instructor
    UNION
-  SELECT 'exam' AS name, count(*) from exam
+  SELECT
+         'exam' AS name,
+         COUNT(*)
+    FROM exam
    UNION
-  SELECT 'prerequisites' AS name, count(*)
+  SELECT
+         'prerequisites' AS name,
+         COUNT(*)
     FROM prerequisites;
 
 CREATE VIEW auto_updated AS
 SELECT
     c.crn,
     c.subject,
-    c.type,
     c.course_num,
+    c.type,
 
     c.auto_updated as course_updated,
     l.auto_updated as lecture_updated,

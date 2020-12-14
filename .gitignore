@@ -1,11 +1,12 @@
 # Binaries
-/api
+/mt
 /mtupdate
 *.test
 
 # Config
 api.yml
 api.yaml
+mt.yml
 *env
 
 # Notes
@@ -15,3 +16,8 @@ TODO*
 *.sqlite
 *.db
 *.csv
+
+# Testing
+requests.http
+app/testdata/testuser.json
+*.txt

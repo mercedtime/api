@@ -253,7 +253,7 @@ func getDiscussionLecture(disc *ucm.Course, sch ucm.Schedule) (*ucm.Course, erro
 	)
 	for i < end {
 		c = ordered[i]
-		if c.Activity != models.Lecture {
+		if c.Activity != models.Lect {
 			i++
 			continue // these are the same
 		}
@@ -269,7 +269,7 @@ func getDiscussionLecture(disc *ucm.Course, sch ucm.Schedule) (*ucm.Course, erro
 			for j < end &&
 				subcourse.Number == disc.Number &&
 				subcourse.Subject == disc.Subject &&
-				subcourse.Activity != models.Lecture {
+				subcourse.Activity != models.Lect {
 				if subcourse.CRN == disc.CRN {
 					return c, nil
 				}
@@ -288,10 +288,10 @@ func getDiscussionLecture(disc *ucm.Course, sch ucm.Schedule) (*ucm.Course, erro
 
 func generateLectureInsert(sch ucm.Schedule) string {
 	insert := goqu.Insert("lectures")
-	rows := make([]*models.Lect, 0, len(sch))
+	rows := make([]*models.Lecture, 0, len(sch))
 	instructorID := 0
 	for _, c := range sch.Ordered() {
-		l := &models.Lect{
+		l := &models.Lecture{
 			CRN:          c.CRN,
 			Units:        c.Units,
 			Days:         str(c.Days),

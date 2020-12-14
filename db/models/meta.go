@@ -87,7 +87,11 @@ func ToCSVRow(v interface{}) ([]string, error) {
 			itf := f.Interface()
 			switch itval := itf.(type) {
 			case time.Time:
-				s = itval.Format(DateFormat)
+				if strings.Contains(feildType.Name, "Time") {
+					s = itval.Format(TimeFormat)
+				} else {
+					s = itval.Format(DateFormat)
+				}
 			case ucm.Exam:
 				s = fmt.Sprintf("Exam{%v}", itval.Day.String())
 			case struct{ Start, End time.Time }:
