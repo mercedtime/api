@@ -4,7 +4,6 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -49,59 +48,28 @@ func courseTable(courses []*ucm.Course) error {
 }
 
 func lecturesTable(
-	crs []*ucm.Course,
+	courses []*ucm.Course,
 	instructors map[string]*instructorMeta,
-) (map[int]*ucm.Course, error) {
+) error {
 	f, err := csvfile("lecture.csv")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer f.Close()
-	lectures := make(map[int]*ucm.Course)
 	w := csv.NewWriter(f)
+	lectures, err := getLectures(courses, instructors)
 
-	var mtitle = 0
-	for _, c := range crs {
-		if c.Activity != models.Lect {
-			continue
-		}
-		if _, ok := lectures[c.CRN]; ok {
-			return nil, errors.New("lectures: tried to put a duplicate crn in lectures table")
-		}
-		lectures[c.CRN] = c
-		instructorID := 0
-		instructor, ok := instructors[c.Instructor]
-		if !ok {
-			fmt.Println("Coudld not find instructor", c.Instructor)
-		} else {
-			instructorID = instructor.id
-		}
-		mtitle = max(mtitle, len(c.Title))
-		// For type safety and so i get error messages
-		// when the schema changes
-		l := models.Lecture{
-			CRN:          c.CRN,
-			Units:        c.Units,
-			Days:         str(c.Days),
-			StartTime:    c.Time.Start,
-			EndTime:      c.Time.End,
-			StartDate:    c.Date.Start,
-			EndDate:      c.Date.End,
-			InstructorID: instructorID,
-		}
-		row, err := models.ToCSVRow(&l)
+	for _, l := range lectures {
+		row, err := models.ToCSVRow(l)
 		if err != nil {
-			log.Println("Could not create lecture row:", err)
-			continue
+			return err
 		}
-		if err = w.Write(row[:]); err != nil {
-			return nil, err
+		if err = w.Write(row); err != nil {
+			return err
 		}
 	}
 	w.Flush()
-	fmt.Println("Lecture Table:")
-	fmt.Println("	max title:", mtitle)
-	return lectures, nil
+	return nil
 }
 
 func labsDiscTable(sch ucm.Schedule, instructors map[string]*instructorMeta) error {
@@ -192,20 +160,16 @@ func writeInstructorTable(crs []*ucm.Course) (map[string]*instructorMeta, error)
 	var (
 		w           = csv.NewWriter(f)
 		instructors = getInstructors(crs)
-		maxname     = 0
 	)
 	for _, inst := range instructors {
-		maxname = max(maxname, len(inst.name))
 		if err = w.Write([]string{
 			str(inst.id),
 			inst.name,
-			"0",
 		}); err != nil {
 			panic(err)
 		}
 	}
 	w.Flush()
-	fmt.Printf("Instructor Table:\n\tmax name len: %d\n", maxname)
 	return instructors, nil
 }
 

@@ -61,7 +61,8 @@ type Course struct {
 	Enrolled    int    `db:"enrolled" json:"enrolled"`
 	Remaining   int    `db:"remaining" json:"remaining"`
 
-	AutoUpdated int `db:"auto_updated" json:"-"`
+	UpdatedAt   time.Time `db:"updated_at" csv:"-"`
+	AutoUpdated int       `db:"auto_updated" json:"-" csv:"-"`
 }
 
 // Lecture is a lecture
@@ -74,7 +75,9 @@ type Lecture struct {
 	StartDate    time.Time `db:"start_date" csv:"start_date" json:"start_date"`
 	EndDate      time.Time `db:"end_date" csv:"end_date" json:"end_date"`
 	InstructorID int       `db:"instructor_id" csv:"instructor_id" json:"instructor_id"`
-	AutoUpdated  int       `db:"auto_updated" json:"-"`
+
+	LastUpdated time.Time `db:"updated_at" csv:"-"`
+	AutoUpdated int       `db:"auto_updated" json:"-" csv:"-"`
 }
 
 // Exam is an exam
@@ -87,9 +90,8 @@ type Exam struct {
 
 // Instructor is the instructor table
 type Instructor struct {
-	ID          int    `db:"id" json:"id"`
-	Name        string `db:"name" json:"name"`
-	AutoUpdated int    `db:"auto_updated" json:"-"`
+	ID   int    `db:"id" json:"id"`
+	Name string `db:"name" json:"name"`
 }
 
 // LabDisc is a lab or a discussion
@@ -104,7 +106,9 @@ type LabDisc struct {
 	EndTime      time.Time `db:"end_time" json:"end_time"`
 	Building     string    `db:"building_room" json:"building_room"`
 	InstructorID int       `db:"instructor_id" json:"instructor_id"`
-	AutoUpdated  int       `db:"auto_updated" json:"-"`
+
+	UpdatedAt   time.Time `db:"updated_at" csv:"-"`
+	AutoUpdated int       `db:"auto_updated" json:"-" csv:"-"`
 }
 
 // Scan helper

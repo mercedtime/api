@@ -1,8 +1,10 @@
 # Data files
-*.csv
+**/*.csv
 *.db
 *.sqlite
 *.sql
+app/testdata/
+db/data
 
 # Binaries
 /api
@@ -10,12 +12,16 @@
 
 # Misc
 /.git
-/db/sql/
 /.dockerignore
 /.gitignore
 /Makefile*
 /TODO*
-Dockerfile*
+/test.sh
+/requests.http
+/.env
+/mt.yml
 *.md
+Dockerfile*
 
-/!README.md
+# Must include
+!/README.md

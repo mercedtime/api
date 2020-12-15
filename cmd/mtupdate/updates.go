@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"html/template"
 	"regexp"
@@ -215,6 +214,9 @@ func updateCourseTable(db *sql.DB, crs []*ucm.Course) error {
 			"title",
 			"description"},
 	})
+	if err != nil {
+		return err
+	}
 	if _, err = tx.Exec(q); err != nil {
 		return err
 	}
@@ -226,41 +228,25 @@ func updateLectureTable(
 	crs []*ucm.Course,
 	instructors map[string]*instructorMeta,
 ) (err error) {
-	var (
-		rows         = make([]interface{}, 0, len(crs))
-		instructorID = 0
-	)
-
-	for _, c := range crs {
-		if c.Activity != models.Lect {
-			continue
-		}
-		instructorID = 0
-		instructor, ok := instructors[c.Instructor]
-		if !ok {
-			fmt.Println("Coudld not find instructor", c.Instructor)
-		} else {
-			for _, crn := range instructor.crns {
-				if crn == c.CRN {
-					goto FoundCRN
-				}
-			}
-			return errors.New("bad instructor")
-		FoundCRN:
-			instructorID = instructor.id
-		}
+	lectures, err := getLectures(crs, instructors)
+	if err != nil {
+		return err
+	}
+	var rows = make([]interface{}, len(lectures))
+	for i, l := range lectures {
 		m := map[string]interface{}{
-			"crn":           c.CRN,
-			"units":         c.Units,
-			"days":          str(c.Days),
-			"start_time":    c.Time.Start.Format(TimeFormat),
-			"end_time":      c.Time.End.Format(TimeFormat),
-			"start_date":    c.Date.Start.Format(models.DateFormat),
-			"end_date":      c.Date.End.Format(models.DateFormat),
-			"instructor_id": instructorID,
+			"crn":           l.CRN,
+			"units":         l.Units,
+			"days":          l.Days,
+			"start_time":    l.StartTime.Format(TimeFormat),
+			"end_time":      l.EndTime.Format(TimeFormat),
+			"start_date":    l.StartDate.Format(models.DateFormat),
+			"end_date":      l.EndDate.Format(models.DateFormat),
+			"instructor_id": l.InstructorID,
 			"auto_updated":  1,
 		}
-		rows = append(rows, m)
+		// rows = append(rows, m)
+		rows[i] = m
 	}
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
 		Isolation: sql.LevelDefault,
@@ -309,6 +295,9 @@ func updateLectureTable(
 			"instructor_id",
 		},
 	})
+	if err != nil {
+		return err
+	}
 	if _, err = tx.Exec(q); err != nil {
 		return err
 	}
@@ -395,6 +384,9 @@ func updateLabsTable(db *sql.DB, sch ucm.Schedule, instructors map[string]*instr
 			"instructor_id",
 		},
 	})
+	if err != nil {
+		return err
+	}
 	_, err = tx.Exec(q)
 	if err != nil {
 		return err
@@ -410,9 +402,8 @@ func updateInstructorsTable(db *sql.DB, instructors map[string]*instructorMeta) 
 			Name: inst.name,
 		}
 		rows = append(rows, map[string]interface{}{
-			"id":           in.ID,
-			"name":         in.Name,
-			"auto_updated": 1,
+			"id":   in.ID,
+			"name": in.Name,
 		})
 	}
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
@@ -502,6 +493,9 @@ func updateExamTable(db *sql.DB, courses []*ucm.Course) error {
 		Tmp:    "_tmp_exam",
 		Vars:   []string{"date", "start_time", "end_time"},
 	})
+	if err != nil {
+		return err
+	}
 	if _, err = tx.Exec(q); err != nil {
 		return err
 	}

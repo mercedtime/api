@@ -16,6 +16,7 @@ import (
 	"github.com/harrybrwn/edu/school/ucmerced/ucm"
 	_ "github.com/lib/pq"
 	"github.com/mercedtime/api/db/models"
+	"github.com/pkg/errors"
 )
 
 /*
@@ -26,12 +27,13 @@ TODO:
 
 func main() {
 	var (
-		dbOpsOnly = false
-		csvOps    = false
-		password  string
-		host      string = "localhost"
-		port      string = "5432"
-		conf             = ucm.ScheduleConfig{Year: 2021, Term: "spring"}
+		dbOpsOnly    = false
+		csvOps       = false
+		password     string
+		host         string = "localhost"
+		port         string = "5432"
+		user, dbname string = "mt", "mercedtime"
+		conf                = ucm.ScheduleConfig{Year: 2021, Term: "spring"}
 	)
 	flag.StringVar(&password, "password", password, "give postgres a password")
 	flag.StringVar(&host, "host", host, "specify the database host")
@@ -54,9 +56,12 @@ func main() {
 		log.Fatal(err)
 	}
 
+	defer fmt.Println()
 	var wg sync.WaitGroup
 	if dbOpsOnly {
-		info := fmt.Sprintf("host=%s port=%s user=mt dbname=mercedtime sslmode=disable", host, port)
+		info := fmt.Sprintf(
+			"host=%s port=%s user=%s dbname=%s sslmode=disable",
+			host, port, user, dbname)
 		if password != "" {
 			info += " password=" + password
 		}
@@ -89,16 +94,15 @@ func main() {
 			schCP[k] = &cp
 		}
 		wg.Add(1)
+		defer fmt.Print("csv files written ")
 		go func() {
 			defer wg.Done()
 			if err = writes(schCP, &wg); err != nil {
 				log.Fatal("CSV Error:", err)
 			}
-			fmt.Print("csv files written ")
 		}()
 	}
 	wg.Wait()
-	fmt.Println()
 }
 
 func updates(w io.Writer, db *sql.DB, sch ucm.Schedule, wg *sync.WaitGroup) (err error) {
@@ -118,14 +122,15 @@ func updates(w io.Writer, db *sql.DB, sch ucm.Schedule, wg *sync.WaitGroup) (err
 	// The course table must go first in case there are new
 	// CRNs because other tables depend on this table
 	// via foreign key constrains.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err = updateCourseTable(db, courses); err != nil {
-			log.Println(err)
-			// return err
-		}
-	}()
+
+	// wg.Add(1)
+	// go func() {
+	// defer wg.Done()
+	if err = updateCourseTable(db, courses); err != nil {
+		// log.Println(err)
+		return err
+	}
+	// }()
 	fmt.Fprintf(w, "%v ok|lectures:", time.Now().Sub(t))
 	err = updateLectureTable(db, courses, inst)
 	if err != nil {
@@ -172,7 +177,7 @@ func writes(sch ucm.Schedule, wg *sync.WaitGroup) error {
 	}
 	go func() {
 		defer wg.Done()
-		if _, err = lecturesTable(courses, inst); err != nil {
+		if err = lecturesTable(courses, inst); err != nil {
 			log.Println(err)
 		}
 	}()
@@ -341,6 +346,42 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*models.Course, error
 		}
 	}
 	return result, err
+}
+
+func getLectures(courses []*ucm.Course, instructors map[string]*instructorMeta) ([]*models.Lecture, error) {
+	var (
+		list     = make([]*models.Lecture, 0, len(courses))
+		lectures = make(map[int]*ucm.Course, len(courses))
+	)
+
+	for _, c := range courses {
+		if c.Activity != models.Lect {
+			continue
+		}
+		if _, ok := lectures[c.CRN]; ok {
+			return nil, errors.New("lectures: tried to put a duplicate crn in lectures table")
+		}
+		lectures[c.CRN] = c
+		instructorID := 0
+		instructor, ok := instructors[c.Instructor]
+		if !ok {
+			return nil, errors.New("could not find an instructor")
+		}
+		instructorID = instructor.id
+		// For type safety and so i get error messages
+		// when the schema changes
+		list = append(list, &models.Lecture{
+			CRN:          c.CRN,
+			Units:        c.Units,
+			Days:         str(c.Days),
+			StartTime:    c.Time.Start,
+			EndTime:      c.Time.End,
+			StartDate:    c.Date.Start,
+			EndDate:      c.Date.End,
+			InstructorID: instructorID,
+		})
+	}
+	return list, nil
 }
 
 func generateLectureInsert(sch ucm.Schedule) string {

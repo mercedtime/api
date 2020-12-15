@@ -10,8 +10,6 @@ IF EXISTS
 CREATE TABLE instructor (
     id   INTEGER UNIQUE NOT NULL,
     name VARCHAR(64),
-
-    auto_updated INT,
     PRIMARY KEY(id)
 );
 
@@ -27,6 +25,7 @@ CREATE TABLE course (
     enrolled    INTEGER,
     remaining   INTEGER,
 
+    updated_at TIMESTAMP DEFAULT now(),
     auto_updated INTEGER DEFAULT 0,
     PRIMARY KEY(crn)
 );
@@ -41,6 +40,7 @@ CREATE TABLE lectures (
     end_date      DATE,
     instructor_id INTEGER,
 
+    updated_at TIMESTAMP DEFAULT now(),
     auto_updated INTEGER DEFAULT 0,
 
     PRIMARY KEY (crn),
@@ -68,6 +68,7 @@ CREATE TABLE aux (
     building_room TEXT,
     instructor_id INT,
 
+    updated_at TIMESTAMP DEFAULT now(),
     auto_updated INTEGER DEFAULT 0,
 
     PRIMARY KEY (crn),
@@ -139,7 +140,9 @@ SELECT
     c.type,
 
     c.auto_updated as course_updated,
-    l.auto_updated as lecture_updated
+    c.updated_at as course_updated_at,
+    l.auto_updated as lecture_updated,
+    l.updated_at as lecture_updated_at
 FROM
     course c,
     lectures l
