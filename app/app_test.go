@@ -13,7 +13,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq"
 	"github.com/mercedtime/api/db/models"
 	"github.com/mercedtime/api/users"
 )
@@ -87,7 +86,6 @@ func TestListEndpoints(t *testing.T) {
 			tst.Query.Set("limit", strconv.FormatInt(int64(tst.Limit), 10))
 		}
 		r.URL.RawQuery = tst.Query.Encode()
-
 		w := httptest.NewRecorder()
 		app.ServeHTTP(w, r)
 
@@ -132,6 +130,7 @@ func TestLectureRoutes(t *testing.T) {
 		{Path: fmt.Sprintf("/lecture/%d/exam", crn), Code: 200},
 		{Path: "/lecture/9999999/exam", Code: 404},
 		{Path: fmt.Sprintf("/lecture/%d/labs", crn), Code: 200},
+		// {Path: "/lecture/9999999/labs", Code: 404}, // TODO this should not return 200
 		{Path: fmt.Sprintf("/lecture/%d/instructor", crn), Code: 200},
 		{Path: "/lecture/9999999/instructor", Code: 200}, // TODO this return 404
 	} {
@@ -210,8 +209,7 @@ func TestPostUser(t *testing.T) {
 	}
 
 	resp, err = ts.Client().Post(ts.URL+"/user", "application/json", strings.NewReader(`
-		{"name":"testuser","email":"test@test.com","password":"password1"}
-	`))
+		{"name":"testuser","email":"test@test.com","password":"password1"}`))
 	if err != nil {
 		t.Error(err)
 	}
@@ -223,6 +221,10 @@ func TestPostUser(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+	if _, err = a.GetUser(users.User{}); err == nil {
+		t.Error("exptected an error from getting an empty user type")
+	}
+
 	url, err := url.Parse(ts.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -306,30 +308,6 @@ func TestLecture(t *testing.T) {
 		}
 		if lect.Units != lecture.Units {
 			t.Error("wrong units")
-		}
-	}
-}
-
-func TestGetLabs(t *testing.T) {
-	app := testApp(t)
-	ts := httptest.NewServer(app.Engine)
-	defer ts.Close()
-
-	var labs []models.LabDisc
-	resp, err := http.Get(ts.URL + "/labs?limit=10")
-	if err != nil {
-		t.Error(err)
-	}
-	defer resp.Body.Close()
-	if err = json.NewDecoder(resp.Body).Decode(&labs); err != nil {
-		t.Error(err)
-	}
-	if len(labs) != 10 {
-		t.Error("wrong number of labs")
-	}
-	for _, l := range labs {
-		if l.CRN == 0 {
-			t.Error("got zero crn")
 		}
 	}
 }

@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"html/template"
 	"regexp"
 	"strings"
 	"time"
@@ -19,6 +21,44 @@ var (
 	TimeFormat    = "15:04:05"
 	mustAlsoRegex = regexp.MustCompile(`Must Also.*$`)
 )
+
+type genquery struct {
+	Target     string
+	Tmp        string
+	AutoUpdate int
+	Vars       []string
+}
+
+var (
+	updateTmpl = `UPDATE {{ .Target }}{{ $n := sub (len .Vars) 1 }}
+SET {{ range $i, $v := .Vars }}
+  {{ $v }} = new.{{ $v }}{{ if ne $i $n }},{{ end }}
+{{- end }}
+  {{- if gt .AutoUpdate 0 -}}, auto_updated = {{ .AutoUpdate }}{{ end }}
+FROM (
+  SELECT * FROM {{ .Tmp }} tmp
+  WHERE NOT EXISTS (
+    SELECT * FROM {{ .Target }} target
+    WHERE
+      {{- range $i, $v := .Vars }}
+      tmp.{{ $v }} = target.{{ . }}{{ if ne $i $n }} AND{{end}}
+      {{- end }}
+  )
+) new
+WHERE {{ .Target }}.crn = new.crn`
+)
+
+func updatequery(data genquery) (string, error) {
+	var buf bytes.Buffer
+	tmpl, err := template.New("sql-update-gen").Funcs(
+		template.FuncMap{"sub": func(a, b int) int { return a - b }},
+	).Parse(updateTmpl)
+	if err != nil {
+		return "", err
+	}
+	err = tmpl.Execute(&buf, data)
+	return buf.String(), err
+}
 
 func cleanTitle(title string) string {
 	title = mustAlsoRegex.ReplaceAllString(title, "")
@@ -56,26 +96,25 @@ func createTmpTable(from string, tx execable, tmp string, rows []interface{}) (d
 
 // RawCourse is a raw course row
 type RawCourse struct {
-	CRN        int       `db:"crn" goqu:"skipupdate"`
-	Subject    string    `db:"subject"`
-	CourseNum  int       `db:"course_num"`
-	Title      string    `db:"title"`
-	Units      int       `db:"units"`
-	Type       string    `db:"type"`
-	Days       string    `db:"days"`
-	StartTime  time.Time `db:"start_time"`
-	EndTime    time.Time `db:"end_time"`
-	StartDate  time.Time `db:"start_date"`
-	EndDate    time.Time `db:"end_date"`
-	Instructor string    `db:"instructor"`
-
-	Description string `db:"description"`
-	Capacity    int    `db:"capacity"`
-	Enrolled    int    `db:"enrolled"`
-	Remaining   int    `db:"remaining"`
+	CRN         int       `db:"crn" goqu:"skipupdate"`
+	Subject     string    `db:"subject"`
+	CourseNum   int       `db:"course_num"`
+	Title       string    `db:"title"`
+	Units       int       `db:"units"`
+	Type        string    `db:"type"`
+	Days        string    `db:"days"`
+	StartTime   time.Time `db:"start_time"`
+	EndTime     time.Time `db:"end_time"`
+	StartDate   time.Time `db:"start_date"`
+	EndDate     time.Time `db:"end_date"`
+	Instructor  string    `db:"instructor"`
+	Description string    `db:"description"`
+	Capacity    int       `db:"capacity"`
+	Enrolled    int       `db:"enrolled"`
+	Remaining   int       `db:"remaining"`
 }
 
-func fullInsert(table string, sch ucm.Schedule) (string, error) {
+func insertRawRow(table string, sch ucm.Schedule) (string, error) {
 	var (
 		rows = make([]RawCourse, sch.Len())
 	)
@@ -118,8 +157,7 @@ func updateCourseTable(db *sql.DB, crs []*ucm.Course) error {
 	}
 
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
-		Isolation: sql.LevelDefault,
-		ReadOnly:  false,
+		Isolation: sql.LevelDefault, ReadOnly: false,
 	})
 	if err != nil {
 		return err
@@ -152,50 +190,31 @@ func updateCourseTable(db *sql.DB, crs []*ucm.Course) error {
 	}
 
 	// auto_updated = 3 for enrollment count updates
-	q = fmt.Sprintf(`
-	UPDATE course
-	SET
-	  capacity = new.capacity,
-	  enrolled = new.enrolled,
-	  remaining = new.remaining,
-	  auto_updated = 3
-	FROM (
-	  SELECT * FROM %[1]s tmp
-	  WHERE NOT EXISTS (
-		SELECT * FROM %[2]s tab
-		WHERE
-		  tmp.capacity = tab.capacity AND
-		  tmp.enrolled = tab.enrolled AND
-		  tmp.remaining = tab.remaining
-	  )
-	) new
-	WHERE %[2]s.crn = new.crn`, tmpTable, target)
+	q, err = updatequery(genquery{
+		Target:     "course",
+		Tmp:        tmpTable,
+		AutoUpdate: 3,
+		Vars:       []string{"capacity", "enrolled", "remaining"},
+	})
+	if err != nil {
+		return err
+	}
 	if _, err = tx.Exec(q); err != nil {
 		return err
 	}
 
 	// auto_updated = 2 for generate updates
-	q = `
-UPDATE course
-SET
-  subject = new.subject,
-  course_num = new.course_num,
-  type = new.type,
-  title = new.title,
-  description = new.description,
-  auto_updated = 2
-FROM (
-  SELECT * FROM ` + tmpTable + ` tmp
-  WHERE NOT EXISTS (
-    SELECT * FROM ` + target + ` l
-	WHERE
-	  tmp.subject = l.subject AND
-	  tmp.course_num = l.course_num AND
-	  tmp.type = l.type AND
-	  tmp.title = l.title AND
-	  tmp.description = l.description
-  )
-) new WHERE ` + target + `.crn = new.crn`
+	q, err = updatequery(genquery{
+		Target:     "course",
+		Tmp:        tmpTable,
+		AutoUpdate: 2,
+		Vars: []string{
+			"subject",
+			"course_num",
+			"type",
+			"title",
+			"description"},
+	})
 	if _, err = tx.Exec(q); err != nil {
 		return err
 	}
@@ -275,31 +294,21 @@ func updateLectureTable(
 		return err
 	}
 	// Updated lectures
-	q = `
-UPDATE Lectures
-SET
-  units = new.units,
-  days  = new.days,
-  start_time    = new.start_time,
-  end_time      = new.end_time,
-  start_date    = new.start_date,
-  end_date      = new.end_date,
-  instructor_id = new.instructor_id,
-  auto_updated = 2
-FROM (
-  SELECT * FROM _tmp_lectures tmp
-  WHERE NOT EXISTS (
-    SELECT * FROM Lectures l
-    WHERE
-      tmp.units = l.units AND
-      tmp.days  = l.days AND
-      tmp.start_time = l.start_time AND
-      tmp.end_time   = l.end_time AND
-      tmp.start_date = l.start_date AND
-      tmp.end_date   = l.end_date AND
-      tmp.instructor_id = l.instructor_id
-  )
-) new WHERE Lectures.CRN = new.CRN`
+
+	q, err = updatequery(genquery{
+		Target:     "lectures",
+		Tmp:        "_tmp_lectures",
+		AutoUpdate: 2,
+		Vars: []string{
+			"units",
+			"days",
+			"start_time",
+			"end_time",
+			"start_date",
+			"end_date",
+			"instructor_id",
+		},
+	})
 	if _, err = tx.Exec(q); err != nil {
 		return err
 	}
@@ -371,31 +380,21 @@ func updateLabsTable(db *sql.DB, sch ucm.Schedule, instructors map[string]*instr
 	if _, err = tx.Exec(q); err != nil {
 		return err
 	}
-	q = `
-UPDATE aux
-SET
-  section = new.section,
-  units = new.units,
-  days  = new.days,
-  start_time = new.start_time,
-  end_time   = new.end_time,
-  building_room = new.building_room,
-  instructor_id = new.instructor_id,
-  auto_updated = 2
-FROM (
-  SELECT * FROM _tmp_labs tmp
-  WHERE NOT EXISTS (
-    SELECT * FROM aux l
-	WHERE
-	  tmp.section = l.section AND
-	  tmp.units   = l.units AND
-      tmp.days    = l.days AND
-      tmp.start_time = l.start_time AND
-      tmp.end_time   = l.end_time AND
-	  tmp.building_room = l.building_room AND
-	  tmp.instructor_id = l.instructor_id
-  )
-) new WHERE new.CRN = aux.CRN`
+
+	q, err = updatequery(genquery{
+		Target:     "aux",
+		Tmp:        "_tmp_labs",
+		AutoUpdate: 2,
+		Vars: []string{
+			"section",
+			"units",
+			"days",
+			"start_time",
+			"end_time",
+			"building_room",
+			"instructor_id",
+		},
+	})
 	_, err = tx.Exec(q)
 	if err != nil {
 		return err
@@ -498,24 +497,11 @@ func updateExamTable(db *sql.DB, courses []*ucm.Course) error {
 		return err
 	}
 
-	q = `
-	UPDATE exam
-	SET
-	  date       = new.date,
-	  start_time = new.start_time,
-	  end_time   = new.end_time
-	FROM (
-	  SELECT * FROM _tmp_exam tmp
-	  WHERE NOT EXISTS (
-		SELECT * FROM exam e
-		WHERE
-		  tmp.date = e.date AND
-		  tmp.start_time = e.start_time AND
-		  tmp.end_time = e.end_time
-	  )
-	) new
-	WHERE
-	  exam.crn = new.crn`
+	q, err = updatequery(genquery{
+		Target: "exam",
+		Tmp:    "_tmp_exam",
+		Vars:   []string{"date", "start_time", "end_time"},
+	})
 	if _, err = tx.Exec(q); err != nil {
 		return err
 	}

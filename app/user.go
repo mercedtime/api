@@ -1,14 +1,25 @@
 package app
 
 import (
-	"errors"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/mercedtime/api/users"
 )
 
+// TODO should be protected
+// only allow: this user, admin
+func (a *App) getUser(c *gin.Context) {
+	u, err := a.GetUser(users.User{ID: c.GetInt("id")})
+	if err != nil {
+		c.JSON(404, &Error{Msg: "could not find user"})
+		return
+	}
+	c.JSON(200, u)
+}
+
 // PostUser handles user creation
+// TODO: should be protected, only admin
 func (a *App) PostUser(c *gin.Context) {
 	type user struct {
 		users.User
@@ -37,12 +48,8 @@ func (a *App) PostUser(c *gin.Context) {
 }
 
 func (a *App) deleteUser(c *gin.Context) {
-	id, ok := c.Params.Get("id")
-	if !ok {
-		senderr(c, errors.New("no user id given"), 400)
-		return
-	}
-	if _, err := a.DB.Exec("DELETE FROM users WHERE id = $1", id); err != nil {
+	if _, err := a.DB.Exec(
+		"DELETE FROM users WHERE id = $1", c.GetInt("id")); err != nil {
 		senderr(c, err, 500)
 		return
 	}

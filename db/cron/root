@@ -1,2 +1,2 @@
 # min   hour    day     month   weekday command
-*     *       *       *       *       /app/bin/mtupdate -db -password=$MT_PW -host=localhost -port=$POSTGRES_PORT >> /app/cron.log
+*/5     *       *       *       *       /app/bin/mtupdate -db -password=$MT_PW -host=localhost -port=$POSTGRES_PORT >> /app/cron.log

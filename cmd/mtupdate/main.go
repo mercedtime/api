@@ -237,9 +237,10 @@ func getDiscussionLecture(disc *ucm.Course, sch ucm.Schedule) (*ucm.Course, erro
 			continue // these are the same
 		}
 
-		// if the current lecture has the same subject and course code
-		// then we loop until we find another lecture and if we find
-		// the discussion passed as an argument the we return the lecture
+		// if the current lecture has the same subject
+		// and course code then we loop until we find
+		// another lecture and if we find the discussion
+		// passed as an argument the we return the lecture
 		if c.Number == disc.Number && c.Subject == disc.Subject {
 			var (
 				j         = i + 1
@@ -262,15 +263,18 @@ func getDiscussionLecture(disc *ucm.Course, sch ucm.Schedule) (*ucm.Course, erro
 		}
 		i++
 	}
-	return nil, fmt.Errorf("could not find a lecture for \"%s %s\"", disc.Fullcode, disc.Title)
+	return nil, fmt.Errorf(
+		"could not find a lecture for \"%s %s\"",
+		disc.Fullcode, disc.Title,
+	)
 }
 
 // GetCourseTable will get all the updated info needed by course table.
 // Parameter courses is just a full list of raw courses and workers is the
-// number of goroutines spawned that will be making requests to get the course
-// description. The number of workers should be fairly high to get the most
-// performance and should be limited to the number of connections that your
-// computer can have open at one time.
+// number of goroutines spawned that will be making requests to get the
+// course description. The number of workers should be fairly high to get
+// the most performance and should be limited to the number of connections
+// that your computer can have open at one time.
 //
 // Side note: performance drops if the number of workers is too high
 func GetCourseTable(courses []*ucm.Course, workers int) ([]*models.Course, error) {

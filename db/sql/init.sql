@@ -8,7 +8,7 @@ IF EXISTS
     prerequisites;
 
 CREATE TABLE instructor (
-    id   INTEGER,
+    id   INTEGER UNIQUE NOT NULL,
     name VARCHAR(64),
 
     auto_updated INT,
@@ -16,9 +16,9 @@ CREATE TABLE instructor (
 );
 
 CREATE TABLE course (
-    crn        INTEGER NOT NULL,
+    crn        INTEGER UNIQUE NOT NULL,
     subject    VARCHAR(4),
-    course_num INTEGER,
+    course_num INTEGER,  -- TODO change to 'num'
     type       VARCHAR(4),
     title      VARCHAR(1024),
 
@@ -97,6 +97,8 @@ CREATE TABLE users (
     hash VARCHAR(72)     UNIQUE NOT NULL, -- password hash
     PRIMARY KEY(id)
 );
+
+-- Triggers and Views
 
 CREATE VIEW counts AS
   SELECT

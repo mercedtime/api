@@ -1,8 +1,10 @@
 package main
 
 import (
+	"math/rand"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/harrybrwn/edu/school/ucmerced/ucm"
 )
@@ -11,17 +13,26 @@ var (
 	testingSchedule ucm.Schedule
 	scheduleOnce    sync.Once
 	scheduleMu      sync.Mutex
+
+	subjects = []string{"CSE", "BIO", "CHEM", "MATH", "PHYS", "ENGR", "ECON", "GASP", "ME"}
 )
+
+func Test(t *testing.T) {
+}
 
 func testSchedule(t *testing.T) ucm.Schedule {
 	t.Helper()
 	var (
-		err  error
-		sch  ucm.Schedule = make(ucm.Schedule)
-		conf              = ucm.ScheduleConfig{Year: 2021, Term: "spring"}
+		err error
+		sch ucm.Schedule = make(ucm.Schedule)
 	)
 	scheduleOnce.Do(func() {
-		testingSchedule, err = ucm.NewSchedule(conf)
+		rand.Seed(time.Now().Unix())
+		testingSchedule, err = ucm.NewSchedule(ucm.ScheduleConfig{
+			Year:    2021,
+			Term:    "spring",
+			Subject: subjects[rand.Intn(len(subjects))],
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -40,6 +51,7 @@ func TestGetDiscussionLecture(t *testing.T) {
 	sch := testSchedule(t)
 	var c *ucm.Course
 	for _, c = range sch.Ordered() {
+		// Get the first discussion
 		if c.Activity == "DISC" {
 			break
 		}

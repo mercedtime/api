@@ -12,7 +12,7 @@ import (
 type User struct {
 	ID        int       `db:"id" json:"id"`
 	Name      string    `db:"name" json:"name"`
-	Email     string    `db:"email" json:"email"`
+	Email     string    `db:"email" json:"email,omitempty"`
 	IsAdmin   bool      `db:"is_admin" json:"is_admin"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 	Hash      []byte    `db:"hash" json:"-"`

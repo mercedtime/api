@@ -54,7 +54,6 @@ func (c *Config) Init() error {
 	case pflag.ErrHelp:
 		os.Exit(0)
 	default:
-		// log.Fatal(err)
 		return err
 	}
 	return config.InitDefaults()
@@ -67,12 +66,7 @@ func (c *Config) GetDSN() string {
 	case "postgres":
 		return fmt.Sprintf(
 			"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-			db.Host,
-			db.Port,
-			db.User,
-			db.Password,
-			db.Name,
-			db.SSL,
+			db.Host, db.Port, db.User, db.Password, db.Name, db.SSL,
 		)
 	case "sqlite3":
 		if !exists(db.Name) {

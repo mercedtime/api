@@ -11,8 +11,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/mercedtime/api/app"
 	"github.com/pkg/errors"
-
-	_ "github.com/lib/pq"
 )
 
 func main() {

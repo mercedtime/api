@@ -17,6 +17,7 @@ TODO*
 *.sqlite
 *.db
 *.csv
+database.dump
 
 # Testing
 requests.http

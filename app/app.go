@@ -7,14 +7,16 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	sql "github.com/jmoiron/sqlx"
+	"github.com/jmoiron/sqlx"
 	"github.com/mercedtime/api/db/models"
 	"github.com/mercedtime/api/users"
+
+	_ "github.com/lib/pq" // app package relies on pq for postgres
 )
 
 // App is the main app
 type App struct {
-	DB        *sql.DB
+	DB        *sqlx.DB
 	Config    *Config
 	Engine    *gin.Engine
 	Protected gin.HandlerFunc
