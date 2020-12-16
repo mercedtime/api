@@ -22,7 +22,7 @@ func csvfile(name string) (*os.File, error) {
 	return os.OpenFile(filepath.Join(csvOutDir, name), os.O_CREATE|os.O_WRONLY, 0644)
 }
 
-func courseTable(courses []*ucm.Course) error {
+func courseTable(conf updateConfig, courses []*ucm.Course) error {
 	f, err := csvfile("course.csv")
 	if err != nil {
 		return err
@@ -34,6 +34,8 @@ func courseTable(courses []*ucm.Course) error {
 		return err
 	}
 	for _, c := range table {
+		c.Year = conf.Year
+		c.TermID = termcodeMap[conf.Term]
 		row, err := models.ToCSVRow(c)
 		if err != nil {
 			return err
@@ -102,8 +104,6 @@ func labsDiscTable(sch ucm.Schedule, instructors map[string]*instructorMeta) err
 			CRN:          c.CRN,
 			CourseCRN:    lectCRN,
 			Section:      c.Section,
-			Units:        c.Units,
-			Days:         str(c.Days),
 			StartTime:    c.Time.Start,
 			EndTime:      c.Time.End,
 			Building:     c.BuildingRoom,

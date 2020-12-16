@@ -17,14 +17,16 @@ import (
 	"github.com/harrybrwn/edu/school/ucmerced/ucm"
 	_ "github.com/lib/pq"
 	"github.com/mercedtime/api/app"
+	"github.com/mercedtime/api/catalog"
 	"github.com/mercedtime/api/db/models"
 	"github.com/pkg/errors"
 )
 
 /*
 TODO:
-  - Add subject
-  - unify the naming conventions for activity
+	- Add context to the mechanism that gets course descriptions
+	  because it sometimes hanges and I have no idea why.
+  	- unify the naming conventions for activity
 */
 
 var termcodeMap = map[string]int{
@@ -59,7 +61,7 @@ func main() {
 	config.SetType("yml")
 	config.AddPath(".")
 	config.SetConfig(&conf)
-	// config.ReadConfigFile() // ignore error if not there
+	config.ReadConfigFile() // ignore error if not there
 	if err := config.InitDefaults(); err != nil {
 		log.Println("could not initialize config defaults")
 	}
@@ -124,12 +126,52 @@ func main() {
 		defer fmt.Print("csv files written ")
 		go func() {
 			defer wg.Done()
-			if err = writes(schCP, &wg); err != nil {
+			if err = writes(conf, schCP, &wg); err != nil {
 				log.Fatal("CSV Error:", err)
 			}
 		}()
 	}
 	wg.Wait()
+}
+
+type tables struct {
+	course        []*catalog.Course
+	lectures      []*models.Lecture
+	aux           []*models.LabDisc
+	exam          []*models.Exam
+	instructorMap map[string]*instructorMeta
+}
+
+func getTablesData(sch ucm.Schedule) (*tables, error) {
+	var (
+		courses = sch.Ordered()
+		err     error
+		tab     = &tables{
+			instructorMap: getInstructors(courses),
+		}
+	)
+	tab.course, err = GetCourseTable(courses, 150)
+	if err != nil {
+		return nil, err
+	}
+	tab.lectures, err = getLectures(courses, tab.instructorMap)
+	if err != nil {
+		return nil, err
+	}
+	tab.aux = getLabsTable(courses, sch, tab.instructorMap)
+	tab.exam = make([]*models.Exam, 0, len(tab.lectures))
+	for _, c := range courses {
+		if c.Exam == nil {
+			continue
+		}
+		tab.exam = append(tab.exam, &models.Exam{
+			CRN:       c.CRN,
+			Date:      c.Exam.Date,
+			StartTime: c.Time.Start,
+			EndTime:   c.Time.End,
+		})
+	}
+	return tab, nil
 }
 
 func updates(w io.Writer, db *sql.DB, sch ucm.Schedule, wg *sync.WaitGroup) (err error) {
@@ -154,7 +196,7 @@ func updates(w io.Writer, db *sql.DB, sch ucm.Schedule, wg *sync.WaitGroup) (err
 	// go func() {
 	// defer wg.Done()
 	if err = updateCourseTable(db, courses); err != nil {
-		// log.Println(err)
+		log.Println(err)
 		return err
 	}
 	// }()
@@ -180,7 +222,7 @@ func updates(w io.Writer, db *sql.DB, sch ucm.Schedule, wg *sync.WaitGroup) (err
 	return nil
 }
 
-func writes(sch ucm.Schedule, wg *sync.WaitGroup) error {
+func writes(conf updateConfig, sch ucm.Schedule, wg *sync.WaitGroup) error {
 	courses := sch.Ordered()
 	var (
 		err error
@@ -188,7 +230,7 @@ func writes(sch ucm.Schedule, wg *sync.WaitGroup) error {
 	wg.Add(4)
 	go func() {
 		defer wg.Done()
-		if err := courseTable(courses); err != nil {
+		if err := courseTable(conf, courses); err != nil {
 			log.Println(err)
 		}
 	}()
@@ -255,6 +297,44 @@ func getInstructors(crs []*ucm.Course) map[string]*instructorMeta {
 	return instructors
 }
 
+func getLabsTable(
+	courses []*ucm.Course,
+	sch ucm.Schedule,
+	instructors map[string]*instructorMeta,
+) []*models.LabDisc {
+	var labs = make([]*models.LabDisc, 0, len(courses))
+	for _, c := range sch.Ordered() {
+		if ucm.CourseType(c.Activity) == ucm.Lecture {
+			continue
+		}
+		var lectCRN int
+		lect, err := getDiscussionLecture(c, sch)
+		if err == nil {
+			lectCRN = lect.CRN
+		} else {
+			lectCRN = 0
+		}
+		instructorID := 0
+		instructor, ok := instructors[c.Instructor]
+		if !ok {
+			fmt.Println("Could not find instructor")
+		} else {
+			instructorID = instructor.id
+		}
+		labs = append(labs, &models.LabDisc{
+			CRN:          c.CRN,
+			CourseCRN:    lectCRN,
+			Section:      c.Section,
+			StartTime:    c.Time.Start,
+			EndTime:      c.Time.End,
+			Building:     c.BuildingRoom,
+			InstructorID: instructorID,
+		})
+	}
+	return labs
+}
+
+// GetDiscussionLecture will return the lecture for a given discussion.
 func getDiscussionLecture(disc *ucm.Course, sch ucm.Schedule) (*ucm.Course, error) {
 	var (
 		ordered = sch.Ordered()
@@ -309,9 +389,9 @@ func getDiscussionLecture(disc *ucm.Course, sch ucm.Schedule) (*ucm.Course, erro
 // that your computer can have open at one time.
 //
 // Side note: performance drops if the number of workers is too high
-func GetCourseTable(courses []*ucm.Course, workers int) ([]*models.Course, error) {
+func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Course, error) {
 	var (
-		result = make([]*models.Course, 0, len(courses))
+		result = make([]*catalog.Course, 0, len(courses))
 		mu     sync.Mutex
 		wg     sync.WaitGroup
 		errs   = make(chan error)
@@ -335,7 +415,7 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*models.Course, error
 	for i := 0; i < workers; i++ {
 		go func(worker int) {
 			defer wg.Done()
-			var innerRes []*models.Course
+			var innerRes []*catalog.Course
 			for c := range ch {
 				info, err := c.Info()
 				if err != nil {
@@ -343,12 +423,14 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*models.Course, error
 					log.Printf("setting description as \"%s\"\n", info)
 					errs <- err
 				}
-				crs := models.Course{
+				crs := catalog.Course{
 					CRN:         c.CRN,
 					Subject:     c.Subject,
 					CourseNum:   c.Number,
 					Type:        c.Activity,
 					Title:       cleanTitle(c.Title),
+					Units:       c.Units,
+					Days:        str(c.Days),
 					Description: info,
 					Capacity:    c.Capacity,
 					Enrolled:    c.Enrolled,
@@ -399,8 +481,6 @@ func getLectures(courses []*ucm.Course, instructors map[string]*instructorMeta) 
 		// when the schema changes
 		list = append(list, &models.Lecture{
 			CRN:          c.CRN,
-			Units:        c.Units,
-			Days:         str(c.Days),
 			StartTime:    c.Time.Start,
 			EndTime:      c.Time.End,
 			StartDate:    c.Date.Start,
@@ -418,8 +498,6 @@ func generateLectureInsert(sch ucm.Schedule) string {
 	for _, c := range sch.Ordered() {
 		l := &models.Lecture{
 			CRN:          c.CRN,
-			Units:        c.Units,
-			Days:         str(c.Days),
 			StartTime:    c.Time.Start,
 			EndTime:      c.Time.End,
 			StartDate:    c.Date.Start,

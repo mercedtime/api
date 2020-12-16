@@ -1,11 +1,11 @@
-DROP TABLE
-IF EXISTS
-    course,
-    exam,
-    instructor,
-    aux,
-    lectures,
-    prerequisites;
+-- DROP TABLE
+-- IF EXISTS
+--     course,
+--     exam,
+--     instructor,
+--     aux,
+--     lectures,
+--     prerequisites;
 
 CREATE TABLE term (
     id INT,
@@ -16,50 +16,60 @@ CREATE TABLE subject (
     code    VARCHAR(4) UNIQUE NOT NULL,
     name    TEXT,
     year    INTEGER NOT NULL,
-    term_id INT NOT NULL
+    term_id INT NOT NULL,
+    PRIMARY KEY (code)
 );
 
 CREATE TABLE instructor (
     id   INTEGER UNIQUE NOT NULL,
-    name VARCHAR(64),
+    name VARCHAR(128),
     PRIMARY KEY(id)
 );
 
-CREATE TABLE course (
-    -- TODO make an 'id SERIAL PRIMARY KEY' type
+-- TODO
+-- * catalog: a full catalog hold common data
+--      rename the Course struct to entry so its 'catalog.Entry'
+-- * course:  the main, stand-alone course work
+-- * subcourse: auxilary course work to go along with a course
 
-    crn        INTEGER UNIQUE NOT NULL,
+CREATE TABLE course (
+    id         SERIAL NOT NULL,
+    crn        INTEGER NOT NULL,
     subject    VARCHAR(4),
     course_num INTEGER,  -- TODO change to 'num'
     type       VARCHAR(4),
     title      VARCHAR(1024),
 
+    units       INTEGER,
+    days        TEXT DEFAULT '',
     description TEXT,
     capacity    INTEGER,
     enrolled    INTEGER,
     remaining   INTEGER,
 
-    updated_at TIMESTAMP DEFAULT now(),
+    updated_at   TIMESTAMP DEFAULT now(),
     auto_updated INTEGER DEFAULT 0,
-    PRIMARY KEY(crn)
+
+    year    INT NOT NULL,
+    term_id INT NOT NULL,
+
+    PRIMARY KEY (id, crn)
 );
 
 CREATE TABLE lectures (
     crn           INTEGER NOT NULL,
-    units         INTEGER,
-    days          TEXT DEFAULT '',
     start_time    TIME,
     end_time      TIME,
     start_date    DATE,
     end_date      DATE,
-    instructor_id INTEGER,
+    instructor_id INTEGER, -- move to catalog
 
     updated_at   TIMESTAMP DEFAULT now(),
     auto_updated INTEGER DEFAULT 0,
 
-    PRIMARY KEY (crn),
-    FOREIGN KEY (instructor_id) REFERENCES instructor(id),
-    FOREIGN KEY (crn)           REFERENCES course(crn)
+    FOREIGN KEY (instructor_id) REFERENCES instructor(id)
+    -- PRIMARY KEY (crn),
+    -- FOREIGN KEY (crn)           REFERENCES course(crn)
 );
 
 -- Auxiliary course material
@@ -67,27 +77,25 @@ CREATE TABLE aux (
     crn           INTEGER NOT NULL,
     course_crn    INTEGER,
     section       VARCHAR(16),
-    units         INTEGER,
-    days          TEXT DEFAULT '',
     start_time    TIME,
     end_time      TIME,
     building_room TEXT,
-    instructor_id INT,
+    instructor_id INT, -- move to catalog
 
     updated_at TIMESTAMP DEFAULT now(),
     auto_updated INTEGER DEFAULT 0,
 
-    PRIMARY KEY (crn),
-    FOREIGN KEY (instructor_id) REFERENCES instructor (id),
-    FOREIGN KEY (crn)           REFERENCES course(crn)
+    FOREIGN KEY (instructor_id) REFERENCES instructor (id)
+    -- PRIMARY KEY (crn),
+    -- FOREIGN KEY (crn)           REFERENCES course(crn)
 );
 
 CREATE TABLE exam (
     crn        INTEGER NOT NULL,
     date       DATE,
     start_time TIME,
-    end_time   TIME,
-    PRIMARY KEY (crn)
+    end_time   TIME
+    -- PRIMARY KEY (crn)
 );
 
 CREATE TABLE prerequisites (
@@ -101,9 +109,9 @@ CREATE TABLE enrollment (
     term INT NOT NULL,
     ts TIMESTAMP DEFAULT now(),
     enrolled INT,
-    capacity INT,
+    capacity INT
 
-    FOREIGN KEY (crn) REFERENCES course(crn)
+    -- FOREIGN KEY (crn) REFERENCES course(crn)
 );
 
 CREATE TABLE users (
@@ -130,6 +138,8 @@ CREATE VIEW counts AS
   SELECT 'exam'          AS name, COUNT(*) FROM exam
    UNION
   SELECT 'enrollment'    AS name, COUNT(*) FROM enrollment
+   UNION
+  SELECT 'enroll_rows'   AS name, COUNT(DISTINCT ts) FROM enrollment -- number of enrollment updates
    UNION
   SELECT 'prerequisites' AS name, COUNT(*) FROM prerequisites;
 

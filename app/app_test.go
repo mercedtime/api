@@ -301,14 +301,8 @@ func TestLecture(t *testing.T) {
 		if lect.CRN != lecture.CRN {
 			t.Error("wrong crn")
 		}
-		if lect.Days != lecture.Days {
-			t.Error("wrong days")
-		}
 		if lect.InstructorID != lecture.InstructorID {
 			t.Error("wrong instructor id")
-		}
-		if lect.Units != lecture.Units {
-			t.Error("wrong units")
 		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"html/template"
+	"log"
 	"regexp"
 	"strings"
 	"time"
@@ -24,8 +25,8 @@ var (
 type genquery struct {
 	Target     string
 	Tmp        string
-	AutoUpdate int
 	Vars       []string
+	AutoUpdate int
 }
 
 var (
@@ -151,7 +152,6 @@ func recordHistoricalEnrollment(db *sql.DB, year, termcode int, crs []*ucm.Cours
 			"term":     termcode,
 			"enrolled": c.Enrolled,
 			"capacity": c.Capacity,
-			// column "ts" defaults to now()
 		})
 	}
 	q, _, err := goqu.Insert("enrollment").Rows(rows).ToSQL()
@@ -168,11 +168,15 @@ func updateCourseTable(db *sql.DB, crs []*ucm.Course) error {
 		tmpTable = "_tmp_course"
 		rows     = make([]interface{}, 0, len(crs))
 	)
+	db.Exec("DROP TABLE IF EXISTS _tmp_course")
 	courselist, err := GetCourseTable(crs, 200)
 	if err != nil {
 		return err
 	}
 	for _, c := range courselist {
+		if c.Description == "" {
+			continue
+		}
 		rows = append(rows, c)
 	}
 
@@ -191,6 +195,8 @@ func updateCourseTable(db *sql.DB, crs []*ucm.Course) error {
 		}
 		if err == nil {
 			err = tx.Commit()
+		} else {
+			log.Println(err)
 		}
 	}()
 	if err != nil {
@@ -199,12 +205,13 @@ func updateCourseTable(db *sql.DB, crs []*ucm.Course) error {
 
 	// New values
 	// auto_updated = 1 for new rows
-	q := "INSERT INTO " + target + `
-	SELECT * FROM ` + tmpTable + ` tmp
+	q := fmt.Sprintf(`INSERT INTO %[1]s
+	SELECT * FROM %[2]s tmp
 	WHERE NOT EXISTS (
-	  SELECT * FROM ` + target + ` c
-	  WHERE c.CRN = tmp.CRN
-	)`
+	  SELECT * FROM %[1]s c
+	  WHERE c.crn = tmp.crn
+	)`, target, tmpTable)
+
 	if _, err = tx.Exec(q); err != nil {
 		return err
 	}
@@ -214,7 +221,10 @@ func updateCourseTable(db *sql.DB, crs []*ucm.Course) error {
 		Target:     "course",
 		Tmp:        tmpTable,
 		AutoUpdate: 3,
-		Vars:       []string{"capacity", "enrolled", "remaining"},
+		Vars: []string{
+			"capacity",
+			"enrolled",
+			"remaining"},
 	})
 	if err != nil {
 		return err
@@ -232,8 +242,11 @@ func updateCourseTable(db *sql.DB, crs []*ucm.Course) error {
 			"subject",
 			"course_num",
 			"type",
+			"units",
+			"days",
 			"title",
-			"description"},
+			"description",
+		},
 	})
 	if err != nil {
 		return err
@@ -257,8 +270,6 @@ func updateLectureTable(
 	for i, l := range lectures {
 		m := map[string]interface{}{
 			"crn":           l.CRN,
-			"units":         l.Units,
-			"days":          l.Days,
 			"start_time":    l.StartTime.Format(TimeFormat),
 			"end_time":      l.EndTime.Format(TimeFormat),
 			"start_date":    l.StartDate.Format(models.DateFormat),
@@ -266,7 +277,6 @@ func updateLectureTable(
 			"instructor_id": l.InstructorID,
 			"auto_updated":  1,
 		}
-		// rows = append(rows, m)
 		rows[i] = m
 	}
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
@@ -284,6 +294,8 @@ func updateLectureTable(
 		}
 		if err == nil {
 			err = tx.Commit()
+		} else {
+			log.Println(err)
 		}
 	}()
 	if err != nil {
@@ -307,8 +319,6 @@ func updateLectureTable(
 		Tmp:        "_tmp_lectures",
 		AutoUpdate: 2,
 		Vars: []string{
-			"units",
-			"days",
 			"start_time",
 			"end_time",
 			"start_date",
@@ -349,8 +359,6 @@ func updateLabsTable(db *sql.DB, sch ucm.Schedule, instructors map[string]*instr
 			"crn":           c.CRN,
 			"course_crn":    lectCRN,
 			"section":       c.Section,
-			"units":         c.Units,
-			"days":          str(c.Days),
 			"start_time":    c.Time.Start.Format(TimeFormat),
 			"end_time":      c.Time.End.Format(TimeFormat),
 			"building_room": c.BuildingRoom,
@@ -374,6 +382,8 @@ func updateLabsTable(db *sql.DB, sch ucm.Schedule, instructors map[string]*instr
 		}
 		if err == nil {
 			err = tx.Commit()
+		} else {
+			log.Println(err)
 		}
 	}()
 	if err != nil {
@@ -397,8 +407,6 @@ func updateLabsTable(db *sql.DB, sch ucm.Schedule, instructors map[string]*instr
 		AutoUpdate: 2,
 		Vars: []string{
 			"section",
-			"units",
-			"days",
 			"start_time",
 			"end_time",
 			"building_room",
@@ -442,6 +450,8 @@ func updateInstructorsTable(db *sql.DB, instructors map[string]*instructorMeta) 
 		}
 		if err == nil {
 			err = tx.Commit()
+		} else {
+			log.Println(err)
 		}
 	}()
 	if err != nil {
@@ -494,6 +504,8 @@ func updateExamTable(db *sql.DB, courses []*ucm.Course) error {
 		}
 		if err == nil {
 			err = tx.Commit()
+		} else {
+			log.Println(err)
 		}
 	}()
 	if err != nil {

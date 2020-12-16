@@ -5,7 +5,7 @@ import (
 )
 
 //go:generate mkdir -p ../data
-//go:generate go run ../../cmd/mtupdate -csv -out=../data
+//go:generate go run ../../cmd/mtupdate -csv -out=../data/spring-2021
 
 // Activity types for any given course
 const (
@@ -48,28 +48,11 @@ var (
 	DateFormat = time.RFC3339
 )
 
-// Course is a course
-type Course struct {
-	CRN       int    `db:"crn" json:"crn"`
-	Subject   string `db:"subject" json:"subject"`
-	CourseNum int    `db:"course_num" json:"course_num"`
-	Type      string `db:"type" json:"type"`
-	Title     string `db:"title" json:"title"`
-
-	Description string `db:"description" json:"description"`
-	Capacity    int    `db:"capacity" json:"capacity"`
-	Enrolled    int    `db:"enrolled" json:"enrolled"`
-	Remaining   int    `db:"remaining" json:"remaining"`
-
-	UpdatedAt   time.Time `db:"updated_at" json:"updated_at" csv:"-"`
-	AutoUpdated int       `db:"auto_updated" json:"-" csv:"-"`
-}
-
 // Lecture is a lecture
 type Lecture struct {
-	CRN          int       `db:"crn" csv:"crn"`
-	Units        int       `db:"units" csv:"units"`
-	Days         string    `db:"days" csv:"days" json:"days"`
+	CRN int `db:"crn" csv:"crn"`
+	// Units        int       `db:"units" csv:"units"`
+	// Days         string    `db:"days" csv:"days" json:"days"`
 	StartTime    time.Time `db:"start_time" csv:"start_time" json:"start_time"`
 	EndTime      time.Time `db:"end_time" csv:"end_time" json:"end_time"`
 	StartDate    time.Time `db:"start_date" csv:"start_date" json:"start_date"`
@@ -97,10 +80,10 @@ type Instructor struct {
 type LabDisc struct {
 	CRN int `db:"crn" json:"crn"`
 	// TODO change this to LectureCRN => lecture_crn
-	CourseCRN    int       `db:"course_crn" json:"course_crn"`
-	Section      string    `db:"section" json:"section"`
-	Units        int       `db:"units" json:"units"`
-	Days         string    `db:"days" json:"days"` // TODO move days to the course table
+	CourseCRN int    `db:"course_crn" json:"course_crn"`
+	Section   string `db:"section" json:"section"`
+	// Units        int       `db:"units" json:"units"`
+	// Days         string    `db:"days" json:"days"` // TODO move days to the course table
 	StartTime    time.Time `db:"start_time" json:"start_time"`
 	EndTime      time.Time `db:"end_time" json:"end_time"`
 	Building     string    `db:"building_room" json:"building_room"`
@@ -119,8 +102,8 @@ func (l *Lecture) Scan(sc Scanable) error {
 	)
 	err := sc.Scan(
 		&l.CRN,
-		&l.Units,
-		&l.Days,
+		// &l.Units,
+		// &l.Days,
 		&stime,
 		&etime,
 		&sdate,
@@ -183,8 +166,8 @@ func (l *LabDisc) Scan(sc Scanable) error {
 		&l.CRN,
 		&l.CourseCRN,
 		&l.Section,
-		&l.Units,
-		&l.Days,
+		// &l.Units,
+		// &l.Days,
 		&stime,
 		&etime,
 		&l.Building,

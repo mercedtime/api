@@ -2,7 +2,6 @@ package app
 
 import (
 	"database/sql"
-	"log"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -28,22 +27,6 @@ func ListInstructors(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 		c.JSON(200, list)
-	}
-}
-
-func newlect(db *sql.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var l models.Lecture
-		if err := c.BindJSON(&l); err != nil {
-			log.Println(err)
-		}
-		_, err := db.Exec(`
-		INSERT INTO lectures (crn,units,activity, days)
-		VALUES ($1,$2,$3,$4,$5,$6)`, l.CRN, l.Units, "LECT", l.Days)
-		if err != nil {
-			senderr(c, err, 500)
-			return
-		}
 	}
 }
 

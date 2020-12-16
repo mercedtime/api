@@ -19,7 +19,8 @@ test.sql
 *.db
 *.csv
 *database.dump
-/db/data/
+/db/data/*
+!/db/data/load.sql
 
 # Testing
 requests.http

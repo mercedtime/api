@@ -3,6 +3,8 @@ package models
 import (
 	"testing"
 	"time"
+
+	"github.com/mercedtime/api/catalog"
 )
 
 func TestCSVRow(t *testing.T) {
@@ -24,7 +26,7 @@ func TestCSVRow(t *testing.T) {
 		t.Errorf("bad time string: got %v, want %v", row[1], now.Format(TimeFormat))
 	}
 
-	l := Course{
+	l := catalog.Course{
 		CRN:       12345,
 		Subject:   "CSE",
 		CourseNum: 31,

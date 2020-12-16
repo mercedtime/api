@@ -1,0 +1,27 @@
+FROM golang:1.15-alpine as builder
+
+COPY go.mod /app/tmp/go.mod
+COPY go.sum /app/tmp/go.sum
+WORKDIR /app/tmp
+RUN go mod download
+
+COPY . /app/src
+WORKDIR /app/src
+RUN mkdir -p /app/bin
+RUN go build -o /app/bin/mtupdate ./cmd/mtupdate
+
+FROM postgres:12.2-alpine
+
+COPY --from=builder /app/bin/mtupdate /app/bin/mtupdate
+WORKDIR /
+
+# Install my cron job
+RUN rm /etc/crontabs/root
+COPY --from=builder /app/src/db/cron/root /etc/crontabs/root
+RUN chown root /etc/crontabs/root
+RUN chmod 0600 /etc/crontabs/root
+
+# Run crond in the background
+RUN crond -b -l 2 -d 2
+
+# VOLUME /docker-entrypoint-initdb.d

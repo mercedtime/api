@@ -25,12 +25,13 @@
 - Add a sign in with email option (probably just changing the request body for /login).
 - GET /lecture/:crn/enrollment For getting the historic enrollment stats
 - GET /standalone
+- Add a "last notified" field to the user table. If we want to do notifications in the future we will probably need to do date comparisons with recently updated courses
 
 # TODO: Thinking Shit
 
 - What is the best way to expose enrollment data in the api?
 - Need to build a prerequisites tree.
-- The instructor id system is a horrible hack, use postgres a SERIAL type instead
+- The instructor id system is a horrible hack, use a SERIAL type instead
 - To make this useful for different terms, we cannot rely on crn as our only primary key, need to start making my own course ids
 
 ---
