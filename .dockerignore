@@ -4,7 +4,7 @@
 *.sqlite
 *.sql
 app/testdata/
-db/data
+db/data/
 **/*database.dump
 
 # Binaries

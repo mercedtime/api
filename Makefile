@@ -13,7 +13,6 @@ clean:
 	$(RM) coverage.txt
 	if [ -x $(BIN) ]; then $(RM) $(BIN); fi
 	if [ -x ./mtupdate ]; then $(RM) ./mtupdate; fi
-	if [ -x ./mt ]; then $(RM) ./mtupdate; fi
 	$(RM) db/data/*.csv *.test
 
 gen:
@@ -37,6 +36,13 @@ dump:
 		-h localhost -p $(POSTGRES_PORT) \
 		--file=$(shell date +%m_%d_%y_%R)-database.dump \
 		$(POSTGRES_DB) -U $(POSTGRES_USER)
+	@if [ -f db/data/enrollment.dump ]; then rm db/data/enrollment.dump; fi
+	pg_dump \
+		-Fc -Z 9 \
+		--data-only --table=enrollment \
+		--file=db/data/enrollment.dump \
+		-h localhost -p $(POSTGRES_PORT) \
+		-d $(POSTGRES_DB) -U $(POSTGRES_USER)
 
 %.dump:
 	@echo $@

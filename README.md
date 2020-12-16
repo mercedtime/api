@@ -1,21 +1,21 @@
 # MercedTime's REST API
 
-| method     | endpoint                   | description                         | protected |
-| ------     | --------                   | -----------                         | --------- |
-| **GET**    | [`/lectures`](#list-lectures)                | List lectures                       | ❌ |
-| **GET**    | [`/labs`](#list-labs)                    | List labs                           | ❌ |
-| **GET**    | [`/exams`](#list-exams)                   | List exams                          | ❌ |
-| **GET**    | [`/discussions`](#list-discussions)             | List discussions                    | ❌ |
-| **GET**    | [`/instructors`](#list-instructors)             | List instructors                    | ❌ |
-| **GET**    | `/lecture/:crn`            | Get a lecture                       | ❌ |
-| **DELETE** | `/lecture/:crn`            | Delete a lecture                    | ✔️ |
-| **GET**    | `/lecture/:crn/exam`       | Get a lecture's exam                | ❌ |
-| **GET**    | `/lecture/:crn/labs`       | Get a lecture's lab sections        | ❌ |
-| **GET**    | `/lecture/:crn/instructor` | Get a lecture's list of instructors | ❌ |
-| **GET**    | `/user/:id`                | Get a user                          | ✔️ |
-| **POST**   | `/user`                    | Create a user                       | ✔️ |
-| **DELETE** | `/user/:id`                | Delete a user                       | ✔️ |
-| **POST**   | `/login`                   | Get login credentials               | ❌ |
+| method     | endpoint                            | description                         | protected |
+| ------     | --------                            | -----------                         | --------- |
+| **GET**    | [`/lectures`](#list-lectures)       | List lectures                       | ❌        |
+| **GET**    | [`/labs`](#list-labs)               | List labs                           | ❌        |
+| **GET**    | [`/exams`](#list-exams)             | List exams                          | ❌        |
+| **GET**    | [`/discussions`](#list-discussions) | List discussions                    | ❌        |
+| **GET**    | [`/instructors`](#list-instructors) | List instructors                    | ❌        |
+| **GET**    | `/lecture/:crn`                     | Get a lecture                       | ❌        |
+| **DELETE** | `/lecture/:crn`                     | Delete a lecture                    | ✔️         |
+| **GET**    | `/lecture/:crn/exam`                | Get a lecture's exam                | ❌        |
+| **GET**    | `/lecture/:crn/labs`                | Get a lecture's lab sections        | ❌        |
+| **GET**    | `/lecture/:crn/instructor`          | Get a lecture's list of instructors | ❌        |
+| **GET**    | `/user/:id`                         | Get a user                          | ✔️         |
+| **POST**   | `/user`                             | Create a user                       | ✔️         |
+| **DELETE** | `/user/:id`                         | Delete a user                       | ✔️         |
+| **POST**   | `/login`                            | Get login credentials               | ❌        |
 
 # TODO: Coding Shit
 
@@ -23,10 +23,12 @@
 - GET /subject Get a subject code, description, and id
 - GET /refresh For getting a refresh token
 - Add a sign in with email option (probably just changing the request body for /login).
+- GET /lecture/:crn/enrollment For getting the historic enrollment stats
+- GET /standalone
 
 # TODO: Thinking Shit
 
-- What is the best way to give enrollment data in the api?
+- What is the best way to expose enrollment data in the api?
 - Need to build a prerequisites tree.
 - The instructor id system is a horrible hack, use postgres a SERIAL type instead
 - To make this useful for different terms, we cannot rely on crn as our only primary key, need to start making my own course ids

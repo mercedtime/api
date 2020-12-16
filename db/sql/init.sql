@@ -63,14 +63,6 @@ CREATE TABLE lectures (
 );
 
 -- Auxiliary course material
---
--- Includes types
---   labs => LAB,
---   discussions => DISC,
---   seminars => SEM,
---   studio => STDO,
---   field work => FLDW,
---   study group => INI,
 CREATE TABLE aux (
     crn           INTEGER NOT NULL,
     course_crn    INTEGER,
@@ -161,3 +153,17 @@ WHERE
         c.auto_updated != 0 OR
         l.auto_updated != 0
     );
+
+-- course update times and count newest first
+CREATE VIEW course_updates AS
+      SELECT updated_at, count(*)
+        FROM course
+    GROUP BY updated_at
+    ORDER BY updated_at DESC;
+
+-- Enrollment data dumps by date newest first
+CREATE VIEW enrollment_updates AS
+     SELECT ts, count(*)
+       FROM enrollment
+   GROUP BY ts
+   ORDER BY ts DESC;
