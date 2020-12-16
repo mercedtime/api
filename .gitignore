@@ -12,12 +12,13 @@ mt.yml
 # Misc
 /vendor/
 TODO*
+test.sql
 
 # Data
 *.sqlite
 *.db
 *.csv
-database.dump
+*database.dump
 
 # Testing
 requests.http

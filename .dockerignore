@@ -5,6 +5,7 @@
 *.sql
 app/testdata/
 db/data
+**/*database.dump
 
 # Binaries
 /api
@@ -21,7 +22,7 @@ db/data
 /.env
 /mt.yml
 *.md
-Dockerfile*
+**/Dockerfile*
 
 # Must include
 !/README.md
