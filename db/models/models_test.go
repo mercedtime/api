@@ -26,7 +26,7 @@ func TestCSVRow(t *testing.T) {
 		t.Errorf("bad time string: got %v, want %v", row[1], now.Format(TimeFormat))
 	}
 
-	l := catalog.Course{
+	l := catalog.Entry{
 		CRN:       12345,
 		Subject:   "CSE",
 		CourseNum: 31,

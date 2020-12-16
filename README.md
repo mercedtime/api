@@ -26,6 +26,7 @@
 - GET /lecture/:crn/enrollment For getting the historic enrollment stats
 - GET /standalone
 - Add a "last notified" field to the user table. If we want to do notifications in the future we will probably need to do date comparisons with recently updated courses
+- To control which year and term for which the data is returned, write a "State" struct that contains this global route state to be accessed globally be the api. (maybe make a new internal package routes with "routes.State")
 
 # TODO: Thinking Shit
 

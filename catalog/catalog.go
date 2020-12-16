@@ -2,8 +2,8 @@ package catalog
 
 import "time"
 
-// Course is a course in the catalog
-type Course struct {
+// Entry is an entry in the catalog
+type Entry struct {
 	ID        int    `db:"id" json:"id" csv:"-"`
 	CRN       int    `db:"crn" json:"crn"`
 	Subject   string `db:"subject" json:"subject"`

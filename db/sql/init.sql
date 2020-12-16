@@ -34,14 +34,14 @@ CREATE TABLE instructor (
 
 CREATE TABLE course (
     id         SERIAL NOT NULL,
-    crn        INTEGER NOT NULL,
+    crn        INTEGER UNIQUE NOT NULL, -- unique contraint may not hold in the future
     subject    VARCHAR(4),
     course_num INTEGER,  -- TODO change to 'num'
     type       VARCHAR(4),
     title      VARCHAR(1024),
 
     units       INTEGER,
-    days        TEXT DEFAULT '',
+    days        VARCHAR(65) DEFAULT '', -- max is the full name of all weekdays separated by ';'
     description TEXT,
     capacity    INTEGER,
     enrolled    INTEGER,
@@ -49,12 +49,15 @@ CREATE TABLE course (
 
     updated_at   TIMESTAMP DEFAULT now(),
     auto_updated INTEGER DEFAULT 0,
-
-    year    INT NOT NULL,
-    term_id INT NOT NULL,
+    year         INT NOT NULL,
+    term_id      INT NOT NULL,
 
     PRIMARY KEY (id, crn)
 );
+
+-- TODO: Add a course_id column that points to course(id).
+--       Then create a trigger or rule on insert that matches
+--       the lecture with a course and gets the course(id) value
 
 CREATE TABLE lectures (
     crn           INTEGER NOT NULL,
@@ -67,10 +70,12 @@ CREATE TABLE lectures (
     updated_at   TIMESTAMP DEFAULT now(),
     auto_updated INTEGER DEFAULT 0,
 
-    FOREIGN KEY (instructor_id) REFERENCES instructor(id)
-    -- PRIMARY KEY (crn),
-    -- FOREIGN KEY (crn)           REFERENCES course(crn)
+    FOREIGN KEY (instructor_id) REFERENCES instructor(id),
+    PRIMARY KEY (crn),
+    FOREIGN KEY (crn) REFERENCES course(crn)
 );
+
+-- CREATE RULE connect_lecture AS ON INSERT TO
 
 -- Auxiliary course material
 CREATE TABLE aux (
@@ -85,17 +90,17 @@ CREATE TABLE aux (
     updated_at TIMESTAMP DEFAULT now(),
     auto_updated INTEGER DEFAULT 0,
 
-    FOREIGN KEY (instructor_id) REFERENCES instructor (id)
-    -- PRIMARY KEY (crn),
-    -- FOREIGN KEY (crn)           REFERENCES course(crn)
+    FOREIGN KEY (instructor_id) REFERENCES instructor (id),
+    PRIMARY KEY (crn),
+    FOREIGN KEY (crn)           REFERENCES course(crn)
 );
 
 CREATE TABLE exam (
     crn        INTEGER NOT NULL,
     date       DATE,
     start_time TIME,
-    end_time   TIME
-    -- PRIMARY KEY (crn)
+    end_time   TIME,
+    PRIMARY KEY (crn)
 );
 
 CREATE TABLE prerequisites (
@@ -143,6 +148,7 @@ CREATE VIEW counts AS
    UNION
   SELECT 'prerequisites' AS name, COUNT(*) FROM prerequisites;
 
+
 CREATE VIEW auto_updated AS
 SELECT
     c.crn,
@@ -163,6 +169,20 @@ WHERE
         c.auto_updated != 0 OR
         l.auto_updated != 0
     );
+
+CREATE VIEW course_small AS
+  SELECT id,
+         crn,
+         subject,
+         course_num,
+         type,
+         units,
+         left(title, 30),
+         enrolled,
+         capacity,
+         year,
+         term_id
+    FROM course;
 
 -- course update times and count newest first
 CREATE VIEW course_updates AS

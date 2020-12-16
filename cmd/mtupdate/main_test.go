@@ -79,3 +79,21 @@ func TestGetCourseTable(t *testing.T) {
 		t.Error("GetCourseTable: goroutines finished too early, expected longer result")
 	}
 }
+
+func TestGetTablesData(t *testing.T) {
+	sch := testSchedule(t)
+	tab, err := getTablesData(sch)
+	if err != nil {
+		t.Error(err)
+	}
+	if len(tab.course) != len(tab.aux)+len(tab.lectures) {
+		t.Error("should have same number of courses and subcourses as the catalog")
+	}
+}
+
+func TestDetectSemester(t *testing.T) {
+	// var tm time.Time
+	// // tm = time.Date(2020, time.January, 4, 1, 1, 1, 1, time.FixedZone("America/Los_Angeles", 0))
+	// tm = time.Date(2020, time.January, 4, 1, 1, 1, 1, time.UTC)
+	// fmt.Println(tm)
+}

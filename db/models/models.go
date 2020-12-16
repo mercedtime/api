@@ -50,9 +50,7 @@ var (
 
 // Lecture is a lecture
 type Lecture struct {
-	CRN int `db:"crn" csv:"crn"`
-	// Units        int       `db:"units" csv:"units"`
-	// Days         string    `db:"days" csv:"days" json:"days"`
+	CRN          int       `db:"crn" csv:"crn"`
 	StartTime    time.Time `db:"start_time" csv:"start_time" json:"start_time"`
 	EndTime      time.Time `db:"end_time" csv:"end_time" json:"end_time"`
 	StartDate    time.Time `db:"start_date" csv:"start_date" json:"start_date"`
@@ -72,18 +70,22 @@ type Exam struct {
 
 // Instructor is the instructor table
 type Instructor struct {
-	ID   int    `db:"id" json:"id"`
+	ID   int    `db:"id" json:"id" csv:"id"`
 	Name string `db:"name" json:"name"`
 }
 
 // LabDisc is a lab or a discussion
-type LabDisc struct {
+//
+// ONLY HERE FOR COMPATIBILITY
+type LabDisc = SubCourse
+
+// SubCourse is an auxillary course that is meant to be taken
+// along side some other main course
+type SubCourse struct {
 	CRN int `db:"crn" json:"crn"`
 	// TODO change this to LectureCRN => lecture_crn
-	CourseCRN int    `db:"course_crn" json:"course_crn"`
-	Section   string `db:"section" json:"section"`
-	// Units        int       `db:"units" json:"units"`
-	// Days         string    `db:"days" json:"days"` // TODO move days to the course table
+	CourseCRN    int       `db:"course_crn" json:"course_crn"`
+	Section      string    `db:"section" json:"section"`
 	StartTime    time.Time `db:"start_time" json:"start_time"`
 	EndTime      time.Time `db:"end_time" json:"end_time"`
 	Building     string    `db:"building_room" json:"building_room"`
@@ -102,8 +104,6 @@ func (l *Lecture) Scan(sc Scanable) error {
 	)
 	err := sc.Scan(
 		&l.CRN,
-		// &l.Units,
-		// &l.Days,
 		&stime,
 		&etime,
 		&sdate,
