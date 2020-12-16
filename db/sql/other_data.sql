@@ -1,8 +1,3 @@
-CREATE TABLE term (
-    id INT,
-    name VARCHAR(6)
-);
-
 INSERT INTO term (
     id,
     name
@@ -10,13 +5,6 @@ INSERT INTO term (
     (1, 'spring'),
     (2, 'summer'),
     (3, 'fall');
-
-CREATE TABLE subject (
-    code    VARCHAR(4) UNIQUE NOT NULL,
-    name    TEXT,
-    year    INTEGER NOT NULL,
-    term_id INT NOT NULL
-);
 
 INSERT INTO subject (
     code,

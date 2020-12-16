@@ -142,6 +142,7 @@ func TestLectureRoutes(t *testing.T) {
 		w := httptest.NewRecorder()
 		app.ServeHTTP(w, r)
 		if tst.Code != w.Code {
+			t.Log(w.Body.String())
 			t.Errorf("'%s' bad status code: got %d, want %d", tst.Path, w.Code, tst.Code)
 			continue
 		}

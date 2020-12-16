@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 
 	"github.com/harrybrwn/edu/school/ucmerced/ucm"
 	"github.com/mercedtime/api/db/models"
@@ -171,64 +170,4 @@ func writeInstructorTable(crs []*ucm.Course) (map[string]*instructorMeta, error)
 	}
 	w.Flush()
 	return instructors, nil
-}
-
-func writeAllData(crs []*ucm.Course) error {
-	f, err := csvfile("raw_page.csv")
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	w := csv.NewWriter(f)
-	row := [...]string{
-		"crn",
-		"course_number",
-		"subject",
-		"title",
-		"units",
-		"activity",
-		"days",
-		"building",
-
-		"start_time",
-		"end_time",
-		"start_date",
-		"end_date",
-
-		"instructor",
-		"max_enrolled",
-		"active_enrolled",
-		"seats_availible",
-	}
-
-	// if err = w.Write(row[:]); err != nil {
-	// 	return err
-	// }
-	for _, c := range crs {
-		row = [...]string{
-			strconv.FormatInt(int64(c.CRN), 10),
-			c.Fullcode,
-			c.Subject,
-			cleanTitle(c.Title),
-			strconv.FormatInt(int64(c.Units), 10),
-			c.Activity,
-			str(c.Days),
-			c.BuildingRoom,
-
-			c.Time.Start.String(),
-			c.Time.End.String(),
-			c.Date.Start.String(),
-			c.Date.End.String(),
-
-			c.Instructor,
-			str(c.Capacity),
-			str(c.Enrolled),
-			str(c.SeatsOpen()),
-		}
-		if err = w.Write(row[:]); err != nil {
-			return err
-		}
-	}
-	w.Flush()
-	return nil
 }

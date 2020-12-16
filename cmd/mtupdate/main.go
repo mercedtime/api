@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
+	"github.com/harrybrwn/config"
 	"github.com/harrybrwn/edu/school/ucmerced/ucm"
 	_ "github.com/lib/pq"
+	"github.com/mercedtime/api/app"
 	"github.com/mercedtime/api/db/models"
 	"github.com/pkg/errors"
 )
@@ -25,19 +27,46 @@ TODO:
   - unify the naming conventions for activity
 */
 
+var termcodeMap = map[string]int{
+	"spring": 1,
+	"summer": 2,
+	"fall":   3,
+}
+
+type updateConfig struct {
+	Database app.DatabaseConfig `config:"database"`
+	Year     int                `config:"year"`
+	Term     string             `config:"term"`
+}
+
 func main() {
 	var (
-		dbOpsOnly    = false
-		csvOps       = false
-		password     string
-		host         string = "localhost"
-		port         string = "5432"
-		user, dbname string = "mt", "mercedtime"
-		conf                = ucm.ScheduleConfig{Year: 2021, Term: "spring"}
+		dbOpsOnly = false
+		csvOps    = false
+
+		conf = updateConfig{
+			Database: app.DatabaseConfig{
+				Driver: "postgres",
+				User:   "mt",
+				Name:   "mercedtime",
+			},
+			Year: 2021,
+			Term: "spring",
+		}
 	)
-	flag.StringVar(&password, "password", password, "give postgres a password")
-	flag.StringVar(&host, "host", host, "specify the database host")
-	flag.StringVar(&port, "port", port, "specify the database port")
+
+	config.SetFilename("mt.yml")
+	config.SetType("yml")
+	config.AddPath(".")
+	config.SetConfig(&conf)
+	// config.ReadConfigFile() // ignore error if not there
+	if err := config.InitDefaults(); err != nil {
+		log.Println("could not initialize config defaults")
+	}
+
+	flag.StringVar(&conf.Database.Password, "password", conf.Database.Password, "give postgres a password")
+	flag.StringVar(&conf.Database.Host, "host", conf.Database.Host, "specify the database host")
+	flag.IntVar(&conf.Database.Port, "port", conf.Database.Port, "specify the database port")
 	flag.BoolVar(&dbOpsOnly, "db", dbOpsOnly, "only perform database updates")
 	flag.BoolVar(&csvOps, "csv", csvOps, "write the tables to csv files")
 
@@ -51,7 +80,7 @@ func main() {
 		log.Fatal("nothing to be done. use '-db-ops' or '-csv'")
 	}
 
-	sch, err := ucm.NewSchedule(conf)
+	sch, err := ucm.NewSchedule(ucm.ScheduleConfig{Year: conf.Year, Term: conf.Term})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -59,13 +88,7 @@ func main() {
 	defer fmt.Println()
 	var wg sync.WaitGroup
 	if dbOpsOnly {
-		info := fmt.Sprintf(
-			"host=%s port=%s user=%s dbname=%s sslmode=disable",
-			host, port, user, dbname)
-		if password != "" {
-			info += " password=" + password
-		}
-		db, err := sql.Open("postgres", info)
+		db, err := sql.Open("postgres", conf.Database.GetDSN())
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -80,6 +103,10 @@ func main() {
 			err := updates(os.Stdout, db, sch, &wg)
 			if err != nil {
 				log.Fatal("DB Error:", err)
+			}
+			err = recordHistoricalEnrollment(db, conf.Year, termcodeMap[conf.Term], sch.Ordered())
+			if err != nil {
+				log.Fatal(err)
 			}
 			fmt.Print("db updates done ")
 		}()

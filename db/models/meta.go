@@ -22,7 +22,7 @@ Outer:
 	for i := 0; i < ty.NumField(); i++ {
 		fld := ty.Field(i)
 		var tag string
-		for _, t := range []string{"db", "json"} {
+		for _, t := range []string{"db"} {
 			tag = fld.Tag.Get(t)
 			if tag == "-" {
 				continue Outer

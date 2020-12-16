@@ -17,17 +17,21 @@ type Config struct {
 	Mode   string `config:"mode" default:"debug"`
 	Secret []byte `config:"secret" env:"JWT_SECRET"`
 
-	Database struct {
-		Driver   string `config:"driver"`
-		Host     string `config:"host" default:"localhost"`
-		Port     int    `config:"port" default:"5432" env:"POSTGRES_PORT"`
-		User     string `config:"user"`
-		Password string `config:"password" env:"POSTGRES_PASSWORD"`
+	Database DatabaseConfig `config:"database"`
+}
 
-		// Database name or database filename
-		Name string `config:"name"`
-		SSL  string `config:"ssl" default:"disable"`
-	} `config:"database"`
+// DatabaseConfig is the part of the config struct that
+// handles database info
+type DatabaseConfig struct {
+	Driver   string `config:"driver"`
+	Host     string `config:"host" default:"localhost"`
+	Port     int    `config:"port" default:"5432" env:"POSTGRES_PORT"`
+	User     string `config:"user"`
+	Password string `config:"password" env:"POSTGRES_PASSWORD"`
+
+	// Database name or database filename
+	Name string `config:"name"`
+	SSL  string `config:"ssl" default:"disable"`
 }
 
 // Init sets up command line flags and parses command line args and gets config defaults
@@ -61,20 +65,24 @@ func (c *Config) Init() error {
 
 // GetDSN builds the database dns from the database config parameters
 func (c *Config) GetDSN() string {
-	db := c.Database
-	switch db.Driver {
+	return c.Database.GetDSN()
+}
+
+// GetDSN builds the database dns from the database config parameters
+func (dbc *DatabaseConfig) GetDSN() string {
+	switch dbc.Driver {
 	case "postgres":
 		return fmt.Sprintf(
 			"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-			db.Host, db.Port, db.User, db.Password, db.Name, db.SSL,
+			dbc.Host, dbc.Port, dbc.User, dbc.Password, dbc.Name, dbc.SSL,
 		)
 	case "sqlite3":
-		if !exists(db.Name) {
-			return fmt.Sprintf("file:%s.sqlite", db.Name)
+		if !exists(dbc.Name) {
+			return fmt.Sprintf("file:%s.sqlite", dbc.Name)
 		}
-		return fmt.Sprintf("file:%s", db.Name)
+		return fmt.Sprintf("file:%s", dbc.Name)
 	default:
-		panic(fmt.Sprintf("unknown database driver %s\n", db.Driver))
+		panic(fmt.Sprintf("unknown database driver %s\n", dbc.Driver))
 	}
 }
 

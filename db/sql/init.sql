@@ -7,6 +7,18 @@ IF EXISTS
     lectures,
     prerequisites;
 
+CREATE TABLE term (
+    id INT,
+    name VARCHAR(6)
+);
+
+CREATE TABLE subject (
+    code    VARCHAR(4) UNIQUE NOT NULL,
+    name    TEXT,
+    year    INTEGER NOT NULL,
+    term_id INT NOT NULL
+);
+
 CREATE TABLE instructor (
     id   INTEGER UNIQUE NOT NULL,
     name VARCHAR(64),
@@ -14,6 +26,8 @@ CREATE TABLE instructor (
 );
 
 CREATE TABLE course (
+    -- TODO make an 'id SERIAL PRIMARY KEY' type
+
     crn        INTEGER UNIQUE NOT NULL,
     subject    VARCHAR(4),
     course_num INTEGER,  -- TODO change to 'num'
@@ -40,7 +54,7 @@ CREATE TABLE lectures (
     end_date      DATE,
     instructor_id INTEGER,
 
-    updated_at TIMESTAMP DEFAULT now(),
+    updated_at   TIMESTAMP DEFAULT now(),
     auto_updated INTEGER DEFAULT 0,
 
     PRIMARY KEY (crn),
@@ -89,48 +103,43 @@ CREATE TABLE prerequisites (
     prereq_crn INTEGER
 );
 
+CREATE TABLE enrollment (
+    crn INTEGER NOT NULL, -- TODO change this to a course id when that is a thing
+    year INT NOT NULL,
+    term INT NOT NULL,
+    ts TIMESTAMP DEFAULT now(),
+    enrolled INT,
+    capacity INT,
+
+    FOREIGN KEY (crn) REFERENCES course(crn)
+);
+
 CREATE TABLE users (
-    id SERIAL            NOT NULL,
-    name VARCHAR(255)    UNIQUE NOT NULL,
-    email VARCHAR(128)   UNIQUE NOT NULL,
-    is_admin             BOOLEAN DEFAULT 'f',
-    created_at TIMESTAMP DEFAULT now(),
-    hash VARCHAR(72)     UNIQUE NOT NULL, -- password hash
+    id         SERIAL       NOT NULL,
+    name       VARCHAR(255) UNIQUE NOT NULL,
+    email      VARCHAR(128) UNIQUE NOT NULL,
+    is_admin   BOOLEAN      DEFAULT 'f',
+    created_at TIMESTAMP    DEFAULT now(),
+    hash       VARCHAR(72)  UNIQUE NOT NULL, -- password hash
     PRIMARY KEY(id)
 );
 
 -- Triggers and Views
 
 CREATE VIEW counts AS
-  SELECT
-         'course' AS name,
-         COUNT(*)
-    FROM course
+  SELECT 'course'        AS name, COUNT(*) FROM course
    UNION
-  SELECT
-         'lecture' AS name,
-         COUNT(*)
-    FROM lectures
+  SELECT 'lecture'       AS name, COUNT(*) FROM lectures
    UNION
-  SELECT
-        'aux' AS name,
-        COUNT(*)
-    FROM aux
+  SELECT 'aux'           AS name, COUNT(*) FROM aux
    UNION
-  SELECT
-         'instructor' AS name,
-         COUNT(*)
-    FROM instructor
+  SELECT 'instructor'    AS name, COUNT(*) FROM instructor
    UNION
-  SELECT
-         'exam' AS name,
-         COUNT(*)
-    FROM exam
+  SELECT 'exam'          AS name, COUNT(*) FROM exam
    UNION
-  SELECT
-         'prerequisites' AS name,
-         COUNT(*)
-    FROM prerequisites;
+  SELECT 'enrollment'    AS name, COUNT(*) FROM enrollment
+   UNION
+  SELECT 'prerequisites' AS name, COUNT(*) FROM prerequisites;
 
 CREATE VIEW auto_updated AS
 SELECT

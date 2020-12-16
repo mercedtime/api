@@ -33,7 +33,8 @@ var (
 SET {{ range $i, $v := .Vars }}
   {{ $v }} = new.{{ $v }}{{ if ne $i $n }},{{ end }}
 {{- end }}
-  {{- if gt .AutoUpdate 0 -}}, auto_updated = {{ .AutoUpdate }}{{ end }}
+  {{- if gt .AutoUpdate 0 -}}, auto_updated = {{ .AutoUpdate }},
+  updated_at = now(){{ end }}
 FROM (
   SELECT * FROM {{ .Tmp }} tmp
   WHERE NOT EXISTS (
@@ -139,6 +140,26 @@ func insertRawRow(table string, sch ucm.Schedule) (string, error) {
 	}
 	q, _, err := goqu.Insert(table).Rows(rows).ToSQL()
 	return q, err
+}
+
+func recordHistoricalEnrollment(db *sql.DB, year, termcode int, crs []*ucm.Course) error {
+	var rows = make([]interface{}, 0, len(crs))
+	for _, c := range crs {
+		rows = append(rows, map[string]interface{}{
+			"crn":      c.CRN,
+			"year":     year,
+			"term":     termcode,
+			"enrolled": c.Enrolled,
+			"capacity": c.Capacity,
+			// column "ts" defaults to now()
+		})
+	}
+	q, _, err := goqu.Insert("enrollment").Rows(rows).ToSQL()
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(q)
+	return err
 }
 
 func updateCourseTable(db *sql.DB, crs []*ucm.Course) error {

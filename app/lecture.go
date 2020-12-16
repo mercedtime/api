@@ -99,8 +99,19 @@ func getLab(db *sqlx.DB) gin.HandlerFunc {
 }
 
 func lecture(db *sqlx.DB) gin.HandlerFunc {
-	var l models.Lecture
-	return getFromCRN(db, lectureQuery, &l)
+	return func(c *gin.Context) {
+		var l models.Lecture
+		err := db.Get(&l, lectureQuery, c.GetInt("crn"))
+		if err == sql.ErrNoRows {
+			c.JSON(404, Error{Msg: "could not find lecture"})
+			return
+		}
+		if err != nil {
+			c.JSON(500, Error{Msg: "internal server error"})
+			return
+		}
+		c.JSON(200, l)
+	}
 }
 
 func exam(db *sqlx.DB) gin.HandlerFunc {
