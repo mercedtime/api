@@ -15,7 +15,6 @@ require (
 	github.com/lib/pq v1.9.0
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/pflag v1.0.5
-	github.com/ugorji/go v1.2.0 // indirect
 	golang.org/x/crypto v0.0.0-20201124201722-c8d3bf9c5392
 	golang.org/x/sys v0.0.0-20201201145000-ef89a241ccb3 // indirect
 	google.golang.org/protobuf v1.25.0 // indirect

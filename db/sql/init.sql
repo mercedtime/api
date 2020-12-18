@@ -21,10 +21,14 @@ CREATE TABLE subject (
 );
 
 CREATE TABLE instructor (
-    id   INTEGER UNIQUE NOT NULL,
+    id   BIGINT UNIQUE NOT NULL,
     name VARCHAR(128),
     PRIMARY KEY(id)
 );
+
+-- CREATE RULE bump_instructor_id AS ON INSERT
+--     TO instructor
+--     WHERE NEW.id IN OLD.id
 
 -- TODO
 -- * catalog: a full catalog hold common data
@@ -65,7 +69,7 @@ CREATE TABLE lectures (
     end_time      TIME,
     start_date    DATE,
     end_date      DATE,
-    instructor_id INTEGER, -- move to catalog
+    instructor_id BIGINT, -- move to catalog
 
     updated_at   TIMESTAMP DEFAULT now(),
     auto_updated INTEGER DEFAULT 0,
@@ -85,7 +89,7 @@ CREATE TABLE aux (
     start_time    TIME,
     end_time      TIME,
     building_room TEXT,
-    instructor_id INT, -- move to catalog
+    instructor_id BIGINT, -- move to catalog
 
     updated_at TIMESTAMP DEFAULT now(),
     auto_updated INTEGER DEFAULT 0,

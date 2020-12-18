@@ -82,7 +82,7 @@ func TestGetCourseTable(t *testing.T) {
 
 func TestGetTablesData(t *testing.T) {
 	sch := testSchedule(t)
-	tab, err := getTablesData(sch)
+	tab, err := getTablesData(sch, &updateConfig{})
 	if err != nil {
 		t.Error(err)
 	}

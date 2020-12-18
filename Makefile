@@ -4,6 +4,7 @@ CMD=./cmd/mt
 POSTGRES_DB ?= $$POSTGRES_DB
 POSTGRES_USER ?= $$POSTGRES_USER
 POSTGRES_PORT ?= $$POSTGRES_PORT
+PG_HOST ?= localhost
 DUMP_FILE ?= ./full-database.dump
 
 ENROLLMENT_DUMP ?= db/data/spring-2021/enrollment.dump
@@ -23,7 +24,7 @@ gen:
 
 test:
 	@env $(shell cat ../.env) go test ./... \
-		-cover -coverprofile=coverage.txt \
+		-cover -coverprofile=coverage.txt   \
 		-covermode=atomic
 
 coverage:
@@ -35,9 +36,10 @@ run-test-image:
 	docker container run --rm -it mt-api.test
 
 dump:
+	psql -h $(PG_HOST) -p $(POSTGRES_PORT) -d $(POSTGRES_DB) -U $(POSTGRES_USER) -c 'select * from counts'
 	@if [ -f $(DUMP_FILE) ]; then rm $(DUMP_FILE); fi
 	pg_dump -Fc -Z 9 \
-		-h localhost -p $(POSTGRES_PORT) \
+		-h $(PG_HOST) -p $(POSTGRES_PORT) \
 		--file=$(DUMP_FILE) \
 		-d $(POSTGRES_DB) -U $(POSTGRES_USER)
 
@@ -46,7 +48,7 @@ dump:
 		-Fc -Z 9 \
 		--data-only --table=enrollment \
 		--file=$(ENROLLMENT_DUMP) \
-		-h localhost -p $(POSTGRES_PORT) \
+		-h $(PG_HOST) -p $(POSTGRES_PORT) \
 		-d $(POSTGRES_DB) -U $(POSTGRES_USER)
 
 db/data/mercedtime.dump:

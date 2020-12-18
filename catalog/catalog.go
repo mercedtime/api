@@ -21,6 +21,9 @@ type Entry struct {
 	UpdatedAt   time.Time `db:"updated_at" json:"updated_at" csv:"-"`
 	AutoUpdated int       `db:"auto_updated" json:"-" csv:"-"`
 
+	// InstructorID int    `db:"instructor_id" csv:"-"`
+	// Instructor   string `db:"instructor" csv:"-"`
+
 	Year   int `db:"year" json:"year" csv:"year"`
 	TermID int `db:"term_id" json:"term_id" csv:"term_id"`
 }

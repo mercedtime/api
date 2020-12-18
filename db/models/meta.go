@@ -76,7 +76,7 @@ func ToCSVRow(v interface{}) ([]string, error) {
 
 		case reflect.String:
 			s = f.String()
-		case reflect.Int:
+		case reflect.Int, reflect.Int16, reflect.Int32, reflect.Int64:
 			s = strconv.FormatInt(f.Int(), 10)
 		case reflect.Bool:
 			s = strconv.FormatBool(f.Bool())
@@ -112,7 +112,7 @@ func ToCSVRow(v interface{}) ([]string, error) {
 		case reflect.Invalid:
 			s = "<nil>"
 		default:
-			fmt.Println("what type is this", f.Kind())
+			panic(fmt.Sprintf("csv generator doesn't support this type \"%s\"", f.Kind()))
 		}
 		row = append(row, s)
 	}

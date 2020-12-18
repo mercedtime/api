@@ -55,7 +55,7 @@ type Lecture struct {
 	EndTime      time.Time `db:"end_time" csv:"end_time" json:"end_time"`
 	StartDate    time.Time `db:"start_date" csv:"start_date" json:"start_date"`
 	EndDate      time.Time `db:"end_date" csv:"end_date" json:"end_date"`
-	InstructorID int       `db:"instructor_id" csv:"instructor_id" json:"instructor_id"`
+	InstructorID int64     `db:"instructor_id" csv:"instructor_id" json:"instructor_id"`
 	LastUpdated  time.Time `db:"updated_at" json:"updated_at" csv:"-"`
 	AutoUpdated  int       `db:"auto_updated" json:"-" csv:"-"`
 }
@@ -70,7 +70,7 @@ type Exam struct {
 
 // Instructor is the instructor table
 type Instructor struct {
-	ID   int    `db:"id" json:"id" csv:"id"`
+	ID   int64  `db:"id" json:"id"`
 	Name string `db:"name" json:"name"`
 }
 
@@ -89,7 +89,7 @@ type SubCourse struct {
 	StartTime    time.Time `db:"start_time" json:"start_time"`
 	EndTime      time.Time `db:"end_time" json:"end_time"`
 	Building     string    `db:"building_room" json:"building_room"`
-	InstructorID int       `db:"instructor_id" json:"instructor_id"`
+	InstructorID int64     `db:"instructor_id" json:"instructor_id"`
 
 	UpdatedAt   time.Time `db:"updated_at" json:"updated_at" csv:"-"`
 	AutoUpdated int       `db:"auto_updated" json:"-" csv:"-"`

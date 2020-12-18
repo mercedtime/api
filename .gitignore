@@ -27,3 +27,4 @@ requests.http
 app/testdata/testuser.json
 *.txt
 test.sh
+counts.sh

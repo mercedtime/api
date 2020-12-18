@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"log"
 	"os"
@@ -48,6 +49,7 @@ func main() {
 		dbOpsOnly = false
 		csvOps    = false
 
+		noEnrollment   = false
 		enrollmentOnly = false
 
 		conf = updateConfig{
@@ -75,42 +77,56 @@ func main() {
 	flag.IntVar(&conf.Database.Port, "port", conf.Database.Port, "specify the database port")
 	flag.BoolVar(&dbOpsOnly, "db", dbOpsOnly, "only perform database updates")
 	flag.BoolVar(&csvOps, "csv", csvOps, "write the tables to csv files")
-	flag.BoolVar(&enrollmentOnly, "enrollment-only", enrollmentOnly, "only get the enrollmenet data")
+	flag.BoolVar(&enrollmentOnly, "enrollment-only", enrollmentOnly, "only updated the db with enrollmenet data")
+	flag.BoolVar(&noEnrollment, "no-enrollment", noEnrollment, "do not update the enrollment table")
 
 	flag.IntVar(&conf.Year, "year", conf.Year, "the year")
 	flag.StringVar(&conf.Term, "term", conf.Term, "the term")
 	flag.Parse()
 
-	if !dbOpsOnly && !csvOps {
+	if !dbOpsOnly && !csvOps && !enrollmentOnly {
 		flag.Usage()
 		println("\n")
-		log.Fatal("nothing to be done. use '-db' or '-csv'")
+		log.Fatal("nothing to be done. use '-db' or '-csv' or '--enrollment-only'")
 	}
+
+	var (
+		out io.Writer = os.Stdout
+	)
 
 	sch, err := ucm.NewSchedule(ucm.ScheduleConfig{Year: conf.Year, Term: conf.Term})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	defer fmt.Println()
-	var wg sync.WaitGroup
-	if dbOpsOnly {
-		db, err := sql.Open("postgres", conf.Database.GetDSN())
+	if enrollmentOnly {
+		db, err := opendb(conf)
+		defer db.Close()
+		err = recordHistoricalEnrollment(
+			db, conf.Year, termcodeMap[conf.Term], sch.Ordered())
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer db.Close()
-		if err = db.Ping(); err != nil {
+		fmt.Fprintf(out, "%d courses updated\n", sch.Len())
+		return
+	}
+
+	tab, err := getTablesData(sch, &conf)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer fmt.Println()
+	if dbOpsOnly {
+		db, err := opendb(conf)
+		if err != nil {
 			log.Fatal(err)
 		}
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			err := updates(os.Stdout, db, sch, &wg)
-			if err != nil {
-				log.Fatal("DB Error:", err)
-			}
+		err = updates(os.Stdout, db, tab)
+		if err != nil {
+			log.Fatal("DB Error:", err)
+		}
+		if !noEnrollment {
 			err = recordHistoricalEnrollment(
 				db, conf.Year, termcodeMap[conf.Term],
 				sch.Ordered(),
@@ -118,9 +134,10 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			fmt.Print("db updates done ")
-		}()
+		}
+		fmt.Print("db updates done ")
 	}
+
 	if csvOps {
 		schCP := make(ucm.Schedule)
 		for k, v := range sch {
@@ -130,16 +147,23 @@ func main() {
 			}
 			schCP[k] = &cp
 		}
-		wg.Add(1)
 		defer fmt.Print("csv files written ")
-		go func() {
-			defer wg.Done()
-			if err = writes(conf, schCP, &wg); err != nil {
-				log.Fatal("CSV Error:", err)
-			}
-		}()
+		if err = writes(conf, tab, schCP); err != nil {
+			log.Fatal("CSV Error:", err)
+		}
 	}
-	wg.Wait()
+}
+
+func opendb(conf updateConfig) (*sql.DB, error) {
+	db, err := sql.Open("postgres", conf.Database.GetDSN())
+	if err != nil {
+		return nil, err
+	}
+	if err = db.Ping(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return db, nil
 }
 
 type tables struct {
@@ -151,7 +175,7 @@ type tables struct {
 }
 
 // TODO try to squash some of these helper functions into one loop
-func getTablesData(sch ucm.Schedule) (*tables, error) {
+func getTablesData(sch ucm.Schedule, conf *updateConfig) (*tables, error) {
 	// t1, t2 := time.Now(), time.Now()
 	report := func(name ...string) {
 		// t2 = time.Now()
@@ -169,6 +193,10 @@ func getTablesData(sch ucm.Schedule) (*tables, error) {
 	tab.course, err = GetCourseTable(courses, 150)
 	if err != nil {
 		return nil, err
+	}
+	for i := range tab.course {
+		tab.course[i].Year = conf.Year
+		tab.course[i].TermID = termcodeMap[conf.Term]
 	}
 	report("courses")
 	tab.lectures, err = getLectures(courses, tab.instructorMap)
@@ -194,13 +222,9 @@ func getTablesData(sch ucm.Schedule) (*tables, error) {
 	return tab, nil
 }
 
-func updates(w io.Writer, db *sql.DB, sch ucm.Schedule, wg *sync.WaitGroup) (err error) {
+func updates(w io.Writer, db *sql.DB, tab *tables) (err error) {
 	t := time.Now()
 	fmt.Fprintf(w, "[%s] ", t.Format(time.Stamp))
-	tab, err := getTablesData(sch)
-	if err != nil {
-		return err
-	}
 	t = time.Now()
 
 	fmt.Fprintf(w, "%v ", time.Now().Sub(t))
@@ -217,14 +241,10 @@ func updates(w io.Writer, db *sql.DB, sch ucm.Schedule, wg *sync.WaitGroup) (err
 	// CRNs because other tables depend on this table
 	// via foreign key constrains.
 
-	// wg.Add(1)
-	// go func() {
-	// defer wg.Done()
 	if err = updateCourseTable(db, tab.course); err != nil {
 		log.Println(err)
 		return err
 	}
-	// }()
 	fmt.Fprintf(w, "%v ok|lectures:", time.Now().Sub(t))
 	t = time.Now()
 
@@ -255,47 +275,60 @@ func updates(w io.Writer, db *sql.DB, sch ucm.Schedule, wg *sync.WaitGroup) (err
 	return nil
 }
 
-func writes(conf updateConfig, sch ucm.Schedule, wg *sync.WaitGroup) error {
-	courses := sch.Ordered()
+func writes(conf updateConfig, tab *tables, sch ucm.Schedule) error {
 	var (
+		all = make([]interface{}, 0, len(tab.course))
 		err error
 	)
-	wg.Add(4)
-	go func() {
-		defer wg.Done()
-		if err := courseTable(conf, courses); err != nil {
-			log.Println(err)
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		if err = examsTable(courses); err != nil {
-			log.Println(err)
-		}
-	}()
-	inst, err := writeInstructorTable(sch.Ordered())
-	if err != nil {
-		log.Println(err)
+	for _, a := range tab.aux {
+		all = append(all, a)
 	}
-	go func() {
-		defer wg.Done()
-		if err = lecturesTable(courses, inst); err != nil {
-			log.Println(err)
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		if err = labsDiscTable(sch, inst); err != nil {
-			log.Println(err)
-		}
-	}()
+	if err = writeCSVFile("labs_disc.csv", all); err != nil {
+		return err
+	}
+	all = all[:0]
+
+	for _, a := range tab.lectures {
+		all = append(all, a)
+	}
+	if err = writeCSVFile("lecture.csv", all); err != nil {
+		return err
+	}
+	all = all[:0]
+
+	for _, a := range tab.exam {
+		all = append(all, a)
+	}
+	if err = writeCSVFile("exam.csv", all); err != nil {
+		return err
+	}
+	all = all[:0]
+
+	for _, a := range tab.instructorMap {
+		all = append(all, &models.Instructor{
+			ID:   a.id,
+			Name: a.name,
+		})
+	}
+	if err = writeCSVFile("instructor.csv", all); err != nil {
+		return err
+	}
+	all = all[:0]
+
+	for _, a := range tab.course {
+		all = append(all, a)
+	}
+	if err = writeCSVFile("course.csv", all); err != nil {
+		return err
+	}
+	all = all[:0]
 	return nil
 }
 
 type instructorMeta struct {
 	name     string
 	ncourses int
-	id       int
+	id       int64
 	crns     []int
 }
 
@@ -311,6 +344,7 @@ func getInstructors(crs []*ucm.Course) map[string]*instructorMeta {
 		i           = 1
 		instructors = make(map[string]*instructorMeta)
 	)
+	hash := fnv.New32a()
 	for _, c := range crs {
 		inst, ok := instructors[c.Instructor]
 		if ok {
@@ -318,14 +352,19 @@ func getInstructors(crs []*ucm.Course) map[string]*instructorMeta {
 			inst.crns = append(inst.crns, c.CRN)
 			continue
 		}
+		_, err := hash.Write([]byte(c.Instructor))
+		if err != nil {
+			panic(err) // TODO FIX THIS ASAP
+		}
 		inst = &instructorMeta{
 			name:     c.Instructor,
 			ncourses: 1,
-			id:       i,
+			id:       int64(hash.Sum32()),
 		}
 		inst.crns = append(inst.crns, c.CRN)
 		instructors[c.Instructor] = inst
 		i++
+		hash.Reset()
 	}
 	return instructors
 }
@@ -347,7 +386,7 @@ func getLabsTable(
 		} else {
 			lectCRN = 0
 		}
-		instructorID := 0
+		instructorID := int64(0)
 		instructor, ok := instructors[c.Instructor]
 		if !ok {
 			fmt.Println("Could not find instructor")
@@ -424,11 +463,14 @@ func getDiscussionLecture(disc *ucm.Course, sch ucm.Schedule) (*ucm.Course, erro
 // Side note: performance drops if the number of workers is too high
 func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Entry, error) {
 	var (
+		mu   sync.Mutex
+		wg   sync.WaitGroup
+		errs = make(chan error)
+		ch   = make(chan *ucm.Course)
+	)
+	// These will be protected by the mutex
+	var (
 		result = make([]*catalog.Entry, 0, len(courses))
-		mu     sync.Mutex
-		wg     sync.WaitGroup
-		errs   = make(chan error)
-		ch     = make(chan *ucm.Course)
 	)
 	go func() {
 		// Convert the course list to
@@ -448,7 +490,9 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Entry, error
 	for i := 0; i < workers; i++ {
 		go func(worker int) {
 			defer wg.Done()
-			var innerRes []*catalog.Entry
+			var (
+				innerRes []*catalog.Entry
+			)
 			for c := range ch {
 				info, err := c.Info()
 				if err != nil {
@@ -504,7 +548,7 @@ func getLectures(courses []*ucm.Course, instructors map[string]*instructorMeta) 
 			return nil, errors.New("lectures: tried to put a duplicate crn in lectures table")
 		}
 		lectures[c.CRN] = c
-		instructorID := 0
+		instructorID := int64(0)
 		instructor, ok := instructors[c.Instructor]
 		if !ok {
 			return nil, errors.New("could not find an instructor")
@@ -527,7 +571,7 @@ func getLectures(courses []*ucm.Course, instructors map[string]*instructorMeta) 
 func generateLectureInsert(sch ucm.Schedule) string {
 	insert := goqu.Insert("lectures")
 	rows := make([]*models.Lecture, 0, len(sch))
-	instructorID := 0
+	instructorID := int64(0)
 	for _, c := range sch.Ordered() {
 		l := &models.Lecture{
 			CRN:          c.CRN,

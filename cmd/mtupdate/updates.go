@@ -24,9 +24,11 @@ var (
 )
 
 type genquery struct {
-	Target     string
-	Tmp        string
-	Vars       []string
+	Target string
+	Tmp    string
+	Vars   []string
+
+	SetUpdated bool
 	AutoUpdate int
 }
 
@@ -35,8 +37,8 @@ var (
 SET {{ range $i, $v := .Vars }}
   {{ $v }} = new.{{ $v }}{{ if ne $i $n }},{{ end }}
 {{- end }}
-  {{- if gt .AutoUpdate 0 -}}, auto_updated = {{ .AutoUpdate }},
-  updated_at = now(){{ end }}
+  {{- if gt .AutoUpdate 0 -}},auto_updated = {{ .AutoUpdate }}{{ end }}
+  {{- if .SetUpdated }},updated_at = now(){{ end }}
 FROM (
   SELECT * FROM {{ .Tmp }} tmp
   WHERE NOT EXISTS (
@@ -221,6 +223,7 @@ func updateCourseTable(db *sql.DB, courses []*catalog.Entry) error {
 	q, err = updatequery(genquery{
 		Target:     target,
 		Tmp:        tmpTable,
+		SetUpdated: true,
 		AutoUpdate: 3,
 		Vars: []string{
 			"capacity",
@@ -238,6 +241,7 @@ func updateCourseTable(db *sql.DB, courses []*catalog.Entry) error {
 	q, err = updatequery(genquery{
 		Target:     target,
 		Tmp:        tmpTable,
+		SetUpdated: true,
 		AutoUpdate: 2,
 		Vars: []string{
 			"subject",
@@ -317,6 +321,7 @@ func updateLectureTable(
 	q, err = updatequery(genquery{
 		Target:     target,
 		Tmp:        tmpTable,
+		SetUpdated: true,
 		AutoUpdate: 2,
 		Vars: []string{
 			"start_time",
@@ -394,6 +399,7 @@ func updateLabsTable(
 	q, err = updatequery(genquery{
 		Target:     target,
 		Tmp:        tmpTable,
+		SetUpdated: true,
 		AutoUpdate: 2,
 		Vars: []string{
 			"section",
@@ -513,9 +519,10 @@ func updateExamTable(db *sql.DB, exams []*models.Exam) error {
 	}
 
 	q, err = updatequery(genquery{
-		Target: target,
-		Tmp:    tmpTable,
-		Vars:   []string{"date", "start_time", "end_time"},
+		Target:     target,
+		Tmp:        tmpTable,
+		SetUpdated: false,
+		Vars:       []string{"date", "start_time", "end_time"},
 	})
 	if err != nil {
 		return err

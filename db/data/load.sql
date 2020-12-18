@@ -9,11 +9,11 @@
 
 -- Fall 2020
 
--- SELECT * INTO tmp FROM instructor LIMIT 0;
--- \COPY instructor FROM 'data/fall-2020/instructor.csv' DELIMITER ',' CSV;
--- INSERT INTO instructor
--- SELECT * FROM tmp;
--- DROP TABLE tmp;
+SELECT * INTO tmp FROM instructor LIMIT 0;
+\COPY tmp FROM 'data/fall-2020/instructor.csv' DELIMITER ',' CSV;
+INSERT INTO instructor SELECT DISTINCT id, name FROM tmp
+WHERE id NOT IN (SELECT id FROM instructor);
+DROP TABLE tmp;
 
 SELECT * INTO tmp FROM course LIMIT 0;
 \COPY tmp (crn, subject, course_num, type, title, units, days, description, capacity, enrolled, remaining, year, term_id) FROM 'data/fall-2020/course.csv' DELIMITER ',' CSV;
@@ -43,6 +43,12 @@ DROP TABLE tmp;
 -- DROP TABLE tmp;
 
 -- Summer 2020
+
+SELECT * INTO tmp FROM instructor LIMIT 0;
+\COPY tmp FROM 'data/summer-2020/instructor.csv' DELIMITER ',' CSV;
+INSERT INTO instructor SELECT DISTINCT id, name FROM tmp
+WHERE id NOT IN (SELECT id FROM instructor);
+DROP TABLE tmp;
 
 SELECT * INTO tmp FROM course LIMIT 0;
 \COPY tmp (crn, subject, course_num, type, title, units, days, description, capacity, enrolled, remaining, year, term_id) FROM 'data/summer-2020/course.csv' DELIMITER ',' CSV;
