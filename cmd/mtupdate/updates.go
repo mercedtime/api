@@ -64,6 +64,13 @@ func updatequery(data genquery) (string, error) {
 	return buf.String(), err
 }
 
+func insertNew(target, tmp string, tx *sql.Tx) error {
+	q := fmt.Sprintf(`INSERT INTO %[1]s
+	SELECT * FROM %[2]s tmp WHERE NOT EXISTS (SELECT * FROM %[1]s c WHERE c.crn = tmp.crn)`, target, tmp)
+	_, err := tx.Exec(q)
+	return err
+}
+
 func cleanTitle(title string) string {
 	title = mustAlsoRegex.ReplaceAllString(title, "")
 	title = strings.Replace(title, "Class is fully online", ": Class is fully online", -1)
@@ -174,7 +181,7 @@ func recordHistoricalEnrollment(db *sql.DB, year, termcode int, crs []*ucm.Cours
 func updateCourseTable(db *sql.DB, courses []*catalog.Entry) error {
 	var (
 		target   = "course"
-		tmpTable = "_tmp_course"
+		tmpTable = "_tmp_" + target
 		rows     = make([]interface{}, 0, len(courses))
 	)
 	for _, c := range courses {
@@ -205,22 +212,12 @@ func updateCourseTable(db *sql.DB, courses []*catalog.Entry) error {
 	if err != nil {
 		return err
 	}
-
-	// New values
-	// auto_updated = 1 for new rows
-	q := fmt.Sprintf(`INSERT INTO %[1]s
-	SELECT * FROM %[2]s tmp
-	WHERE NOT EXISTS (
-	  SELECT * FROM %[1]s c
-	  WHERE c.crn = tmp.crn
-	)`, target, tmpTable)
-
-	if _, err = tx.Exec(q); err != nil {
+	if err = insertNew(target, tmpTable, tx); err != nil {
 		return err
 	}
 
 	// auto_updated = 3 for enrollment count updates
-	q, err = updatequery(genquery{
+	q, err := updatequery(genquery{
 		Target:     target,
 		Tmp:        tmpTable,
 		SetUpdated: true,
@@ -268,7 +265,7 @@ func updateLectureTable(
 ) (err error) {
 	var (
 		target   = "lectures"
-		tmpTable = "_tmp_lectures"
+		tmpTable = "_tmp_" + target
 		rows     = make([]interface{}, len(lectures))
 	)
 	for i, l := range lectures {
@@ -346,7 +343,7 @@ func updateLabsTable(
 ) (err error) {
 	var (
 		target   = "aux"
-		tmpTable = "_tmp_aux"
+		tmpTable = "_tmp_" + target
 		rows     = make([]interface{}, len(labs))
 	)
 	for i, l := range labs {
@@ -384,19 +381,11 @@ func updateLabsTable(
 	if err != nil {
 		return err
 	}
-
-	q := fmt.Sprintf(`
-	INSERT INTO %[1]s
-	SELECT * FROM %[2]s tmp
-	WHERE NOT EXISTS (
-	  SELECT * FROM %[1]s target
-	  WHERE target.CRN = tmp.CRN
-	)`, target, tmpTable)
-	if _, err = tx.Exec(q); err != nil {
+	if err = insertNew(target, tmpTable, tx); err != nil {
 		return err
 	}
 
-	q, err = updatequery(genquery{
+	q, err := updatequery(genquery{
 		Target:     target,
 		Tmp:        tmpTable,
 		SetUpdated: true,
@@ -422,7 +411,7 @@ func updateLabsTable(
 func updateInstructorsTable(db *sql.DB, instructors map[string]*instructorMeta) (err error) {
 	var (
 		target   = "instructor"
-		tmpTable = "_tmp_instructor"
+		tmpTable = "_tmp_" + target
 		rows     = make([]interface{}, 0, len(instructors))
 	)
 	for _, inst := range instructors {
@@ -474,7 +463,7 @@ func updateInstructorsTable(db *sql.DB, instructors map[string]*instructorMeta) 
 func updateExamTable(db *sql.DB, exams []*models.Exam) error {
 	var (
 		target   = "exam"
-		tmpTable = "_tmp_exam"
+		tmpTable = "_tmp_" + target
 		rows     = make([]interface{}, len(exams))
 	)
 	for i, e := range exams {
@@ -508,17 +497,11 @@ func updateExamTable(db *sql.DB, exams []*models.Exam) error {
 	if err != nil {
 		return err
 	}
-	q := fmt.Sprintf(`
-	INSERT INTO %[1]s
-	SELECT * FROM %[2]s
-	WHERE crn NOT IN (
-	  SELECT crn FROM %[1]s
-	)`, target, tmpTable)
-	if _, err = tx.Exec(q); err != nil {
+	if err = insertNew(target, tmpTable, tx); err != nil {
 		return err
 	}
 
-	q, err = updatequery(genquery{
+	q, err := updatequery(genquery{
 		Target:     target,
 		Tmp:        tmpTable,
 		SetUpdated: false,
