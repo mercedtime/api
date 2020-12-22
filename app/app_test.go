@@ -20,6 +20,17 @@ import (
 func Test(t *testing.T) {
 }
 
+func TestArr(t *testing.T) {
+	// a := testApp(t)
+	// res := make([]map[string]interface{}, 0, 3)
+	// row := a.DB.DB.QueryRow(`select '{{"one":1},{"two":2}}'::json[]`)
+	// err := row.Scan(pq.Array(&res))
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	// fmt.Println(res)
+}
+
 func testConfig() *Config {
 	conf := &Config{}
 	conf.Database.Driver = "postgres"

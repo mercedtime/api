@@ -36,11 +36,10 @@ DROP TABLE tmp;
 -- FROM tmp;
 -- DROP TABLE tmp;
 
--- SELECT * INTO tmp FROM exam LIMIT 0;
--- \COPY tmp FROM 'data/fall-2020/exam.csv' DELIMITER ',' CSV;
--- INSERT INTO exam
--- SELECT * FROM tmp;
--- DROP TABLE tmp;
+SELECT * INTO tmp FROM exam LIMIT 0;
+\COPY tmp FROM 'data/fall-2020/exam.csv' DELIMITER ',' CSV;
+INSERT INTO exam SELECT * FROM tmp;
+DROP TABLE tmp;
 
 -- Summer 2020
 

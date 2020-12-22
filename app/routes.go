@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
@@ -25,6 +26,8 @@ func (a *App) RegisterRoutes(g *gin.RouterGroup) {
 	lists.GET("/discussions", ListDiscussions(a.DB))
 	lists.GET("/instructors", ListInstructors(a.DB))
 	lists.GET("/courses", termyearQueryMiddleware, a.listCourses)
+	lists.GET("/catalog/:year/:term", termyearParamMiddle, getCatalog(a.DB))
+	// g.GET("/catalog/:year/:term", listParamsMiddleware, termyearParamMiddle, getCatalog(a.DB))
 
 	ugroup := g.Group("/user")
 	ugroup.POST("/", a.PostUser)
@@ -87,26 +90,47 @@ func (a *App) availbleTerms(c *gin.Context) {
 	c.JSON(200, resp)
 }
 
+func setTerm(c *gin.Context, term string) {
+	switch term {
+	case "spring":
+		c.Set("term", 1)
+	case "summer":
+		c.Set("term", 2)
+	case "fall":
+		c.Set("term", 3)
+	default:
+		c.AbortWithStatusJSON(400, &Error{"invalid term", 400})
+		return
+	}
+	return
+}
+
+func setYear(c *gin.Context, year string) {
+	yeari, err := strconv.ParseInt(year, 10, 32)
+	if err != nil {
+		c.AbortWithStatusJSON(400, &Error{"not a valid year", 400})
+		return
+	}
+	c.Set("year", yeari)
+	return
+}
+
 func termyearQueryMiddleware(c *gin.Context) {
 	if term, ok := c.GetQuery("term"); ok {
-		switch term {
-		case "spring":
-			c.Set("term", 1)
-		case "summer":
-			c.Set("term", 2)
-		case "fall":
-			c.Set("term", 3)
-		default:
-			// TODO send back an error
-		}
+		setTerm(c, term)
 	}
-	if yearstr, ok := c.GetQuery("year"); ok {
-		year, err := strconv.ParseInt(yearstr, 10, 32)
-		if err != nil {
-			senderr(c, err, 500)
-			return
-		}
-		c.Set("year", year)
+	if year, ok := c.GetQuery("year"); ok {
+		setYear(c, year)
+	}
+	c.Next()
+}
+
+func termyearParamMiddle(c *gin.Context) {
+	if term, ok := c.Params.Get("term"); ok {
+		setTerm(c, term)
+	}
+	if year, ok := c.Params.Get("year"); ok {
+		setYear(c, year)
 	}
 	c.Next()
 }
@@ -114,12 +138,12 @@ func termyearQueryMiddleware(c *gin.Context) {
 func crnParamMiddleware(c *gin.Context) {
 	crnStr, ok := c.Params.Get("crn")
 	if !ok {
-		c.JSON(400, ErrStatus(400, "no crn given"))
+		c.AbortWithStatusJSON(400, ErrStatus(400, "no crn given"))
 		return
 	}
 	crn, err := strconv.Atoi(crnStr)
 	if err != nil {
-		c.JSON(400, &Error{Msg: "crn given is not a number"})
+		c.AbortWithStatusJSON(400, &Error{Msg: "crn given is not a number"})
 		return
 	}
 	c.Set("crn", crn)
@@ -129,7 +153,7 @@ func crnParamMiddleware(c *gin.Context) {
 func idParamMiddleware(c *gin.Context) {
 	idStr, ok := c.Params.Get("id")
 	if !ok {
-		c.JSON(400, &Error{
+		c.AbortWithStatusJSON(400, &Error{
 			Msg:    "no id given",
 			Status: 400,
 		})
@@ -137,7 +161,7 @@ func idParamMiddleware(c *gin.Context) {
 	}
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		c.JSON(400, &Error{Msg: "id is not a number"})
+		c.AbortWithStatusJSON(400, &Error{Msg: "id is not a number"})
 		return
 	}
 	c.Set("id", id)
@@ -176,10 +200,10 @@ func getFromCRN(db *sqlx.DB, query string, v interface{ Scan(models.Scanable) er
 }
 
 func senderr(c *gin.Context, e error, status int) {
-	c.JSON(
+	c.AbortWithStatusJSON(
 		status,
 		&Error{
-			Msg:    e.Error(),
+			Msg:    strings.Replace(e.Error(), "\"", "'", -1),
 			Status: status,
 		},
 	)

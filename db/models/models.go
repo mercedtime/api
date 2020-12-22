@@ -86,8 +86,8 @@ type SubCourse struct {
 	// TODO change this to LectureCRN => lecture_crn
 	CourseCRN    int       `db:"course_crn" json:"course_crn"`
 	Section      string    `db:"section" json:"section"`
-	StartTime    time.Time `db:"start_time" json:"start_time"`
-	EndTime      time.Time `db:"end_time" json:"end_time"`
+	StartTime    time.Time `db:"start_time" json:"start_time,omitempty"`
+	EndTime      time.Time `db:"end_time" json:"end_time,omitempty"`
 	Building     string    `db:"building_room" json:"building_room"`
 	InstructorID int64     `db:"instructor_id" json:"instructor_id"`
 
