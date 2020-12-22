@@ -17,6 +17,9 @@ import (
 	"github.com/mercedtime/api/users"
 )
 
+func Test(t *testing.T) {
+}
+
 func testConfig() *Config {
 	conf := &Config{}
 	conf.Database.Driver = "postgres"
@@ -52,22 +55,26 @@ func TestListEndpoints(t *testing.T) {
 	}{
 		{Path: "/lectures", Limit: 10, Offset: 12, Code: 200},
 		{Path: "/lectures", Query: url.Values{"subject": {"bio"}}, Code: 200},
-		{
-			Path:  "/lectures",
-			Limit: 2, Offset: -1,
-			Code: 500,
-		},
+		{Path: "/lectures", Limit: 2, Offset: -1, Code: 400},
 		{Path: "/labs", Limit: 4, Offset: 0, Code: 200},
-		{Path: "/labs", Limit: 4, Offset: -1, Code: 500},
+		{Path: "/labs", Limit: 4, Offset: -1, Code: 400},
 		{Path: "/discussions", Limit: 3, Code: 200},
 		{Path: "/discussions", Limit: 3, Offset: 3, Code: 200},
-		{Path: "/discussions", Limit: 3, Offset: -1, Code: 500},
+		{Path: "/discussions", Limit: 3, Offset: -1, Code: 400},
 		{Path: "/exams", Limit: 12, Code: 200},
 		{Path: "/exams", Limit: 12, Offset: 8, Code: 200},
-		{Path: "/exams", Limit: 12, Offset: -1, Code: 500},
+		{Path: "/exams", Limit: 12, Offset: -1, Code: 400},
 		{Path: "/instructors", Limit: 2, Code: 200},
 		{Path: "/instructors", Limit: 2, Offset: 12, Code: 200},
-		{Path: "/instructors", Limit: 2, Offset: -1, Code: 500},
+		{Path: "/instructors", Limit: 2, Offset: -1, Code: 400},
+		{Path: "/courses", Limit: 30, Offset: 2, Code: 200},
+		{Path: "/courses", Query: url.Values{"subject": {"cse"}}, Code: 200},
+		{Path: "/courses", Query: url.Values{
+			"subject": {"cse"},
+			"year":    {"2021"},
+			"term":    {"spring"},
+			"limit":   {"53"},
+		}, Code: 200},
 	} {
 		r := &http.Request{
 			Method: "GET",
@@ -90,7 +97,7 @@ func TestListEndpoints(t *testing.T) {
 		app.ServeHTTP(w, r)
 
 		if w.Code != tst.Code {
-			t.Errorf("bad status code, got %d, want %d", w.Code, tst.Code)
+			t.Errorf("%s: bad status code, got %d, want %d", r.URL.String(), w.Code, tst.Code)
 			continue
 		}
 		if tst.Code >= 300 {

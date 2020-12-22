@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"reflect"
 
 	"github.com/mercedtime/api/db/models"
 )
@@ -37,4 +38,17 @@ func writeCSVFile(name string, data []interface{}) error {
 	}
 	w.Flush()
 	return nil
+}
+
+// InterfaceSlice converts any slice into a slice of interfaces
+func interfaceSlice(slice interface{}) []interface{} {
+	s := reflect.ValueOf(slice)
+	if s.Kind() != reflect.Slice {
+		panic("InterfaceSlice() given a non-slice type")
+	}
+	ret := make([]interface{}, s.Len())
+	for i := 0; i < s.Len(); i++ {
+		ret[i] = s.Index(i).Interface()
+	}
+	return ret
 }

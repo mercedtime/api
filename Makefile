@@ -16,7 +16,6 @@ clean:
 	$(RM) coverage.txt
 	if [ -x $(BIN) ]; then $(RM) $(BIN); fi
 	if [ -x ./mtupdate ]; then $(RM) ./mtupdate; fi
-	#$(RM) db/data/*.csv *.test
 
 gen:
 	$(RM) db/data/spring-2021/*.csv

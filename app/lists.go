@@ -1,58 +1,123 @@
 package app
 
 import (
+	"database/sql"
+	"fmt"
+	"reflect"
+	"strconv"
 	"strings"
 
+	"github.com/doug-martin/goqu/v9"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+	"github.com/mercedtime/api/catalog"
 	"github.com/mercedtime/api/db/models"
 )
 
 func listParamsMiddleware(c *gin.Context) {
-	var (
-		limit  interface{} = defaultLimit
-		offset interface{} = defaultOffset
-	)
-	if lim, ok := c.GetQuery("limit"); ok && lim != "" {
-		limit = lim
+	for _, key := range []string{"limit", "offset"} {
+		query, ok := c.GetQuery(key)
+		if !ok || query == "" {
+			c.Set(key, nil)
+			continue
+		}
+		u, err := strconv.ParseUint(query, 10, 32)
+		if err != nil {
+			c.JSON(400, &Error{
+				Msg:    fmt.Sprintf("invalid %s", key),
+				Status: 400,
+			})
+			c.Set(key, nil)
+			return
+		}
+		c.Set(key, uint(u))
 	}
-	if off, ok := c.GetQuery("offset"); ok && off != "" {
-		offset = off
-	}
-	c.Set("limit", limit)
-	c.Set("offset", offset)
 	c.Next()
+}
+
+func (a *App) listCourses(c *gin.Context) {
+	var (
+		resp   = make([]catalog.Entry, 0, 500)
+		params = goqu.Ex{}
+	)
+	if year, ok := c.Get("year"); ok {
+		params["year"] = year
+	}
+	if term, ok := c.Get("term"); ok {
+		params["term_id"] = term
+	}
+	if subj, ok := c.GetQuery("subject"); ok {
+		params["subject"] = subj
+	}
+
+	stmt := goqu.From("course").Select("*").Where(params)
+	if limit, ok := c.Get("limit"); ok && limit != nil {
+		stmt = stmt.Limit(limit.(uint))
+	}
+	if offset, ok := c.Get("offset"); ok && offset != nil {
+		stmt = stmt.Offset(offset.(uint))
+	}
+	query, _, err := stmt.ToSQL()
+	if err != nil {
+		c.JSON(500, Error{Msg: "internal error"})
+		return
+	}
+	err = a.DB.Select(&resp, query)
+	if err != nil {
+		c.JSON(500, Error{Msg: "could not query database"})
+		return
+	}
+	c.JSON(200, resp)
+}
+
+func interfaceSlice(slice interface{}) []interface{} {
+	s := reflect.ValueOf(slice)
+	if s.Kind() != reflect.Slice {
+		panic("InterfaceSlice() given a non-slice type")
+	}
+	ret := make([]interface{}, s.Len())
+	for i := 0; i < s.Len(); i++ {
+		ret[i] = s.Index(i).Interface()
+	}
+	return ret
 }
 
 // ListLectures returns a handlerfunc that lists lectures.
 // Depends on "limit" and "offset" being set from middleware.
 func ListLectures(db *sqlx.DB) func(*gin.Context) {
 	var (
-		lecturesQuery = `
-		  SELECT ` + strings.Join(models.GetSchema(models.Lecture{}), ",") + `
-		  FROM lectures
-		  LIMIT $1 OFFSET $2`
-		lecturesBySubjectQuery = `
-		  SELECT ` + strings.Join(models.GetNamedSchema("l", models.Lecture{}), ",") + `
-		  FROM lectures l, course c
-		  WHERE
-		  	l.crn = c.crn AND
-		  	c.subject = $1
-		  LIMIT $2 OFFSET $3`
-		err      error
 		lectures []models.Lecture
+		stmt     = goqu.From("lectures").Select(
+			interfaceSlice(models.GetNamedSchema("lectures", models.Lecture{}))...)
 	)
 	return func(c *gin.Context) {
 		lectures = nil // deallocate from previous calls
 		subject, ok := c.GetQuery("subject")
+		var q = stmt
 		if ok {
-			err = db.Select(
-				&lectures, lecturesBySubjectQuery,
-				strings.ToUpper(subject),
-				c.MustGet("limit"), c.MustGet("offset"),
-			)
-		} else {
-			err = db.Select(&lectures, lecturesQuery, c.MustGet("limit"), c.MustGet("offset"))
+			q = q.Join(
+				goqu.I("course"),
+				goqu.On(goqu.I("course.crn").Eq(goqu.I("lectures.crn"))),
+			).Where(
+				goqu.Ex{"course.subject": strings.ToUpper(subject)})
+		}
+
+		if limit, ok := c.Get("limit"); ok && limit != nil {
+			q = q.Limit(limit.(uint))
+		}
+		if offset, ok := c.Get("offset"); ok && offset != nil {
+			q = q.Offset(offset.(uint))
+		}
+
+		query, _, err := q.ToSQL()
+		if err != nil {
+			senderr(c, err, 500)
+			return
+		}
+		err = db.Select(&lectures, query)
+		if err == sql.ErrNoRows {
+			c.JSON(404, Error{"no lectures found", 404})
+			return
 		}
 		if err != nil {
 			senderr(c, err, 500)
@@ -103,7 +168,9 @@ func ListDiscussions(db *sqlx.DB) gin.HandlerFunc {
 	  	aux.crn = course.crn AND
 	  	course.type = 'DISC'
 	  LIMIT $1 OFFSET $2`
-	var list []models.LabDisc
+	var (
+		list []models.LabDisc
+	)
 	return func(c *gin.Context) {
 		list = nil
 		if err = db.Select(

@@ -62,10 +62,18 @@ func run() error {
 	}
 
 	v1 := r.Group("/api/v1")
+	if config.GetString("mode") == "debug" {
+		// CORS
+		v1.Use(func(c *gin.Context) {
+			c.Header("Access-Control-Allow-Origin", "http://localhost:3000")
+			c.Next()
+		})
+	}
 	app.RegisterRoutes(v1)
 	r.POST("/login", auth.LoginHandler)
 
 	protect := auth.MiddlewareFunc()
+
 	r.GET("/admin", protect, func(c *gin.Context) {
 		c.JSON(200, map[string]interface{}{
 			"success": "yay",

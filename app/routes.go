@@ -12,31 +12,28 @@ import (
 
 // RegisterRoutes will setup all the app routes
 func (a *App) RegisterRoutes(g *gin.RouterGroup) {
-	a.instructorGroup(g)
-	a.listsGroup(g)
 	a.lectureGroup(g)
-	a.userGroup(g)
-}
 
-func (a *App) userGroup(g *gin.RouterGroup) {
-	g.POST("/user", a.PostUser)
-	g.GET("/user/:id", idParamMiddleware, a.getUser)
-	g.DELETE("/user/:id", idParamMiddleware, a.deleteUser)
-}
+	// utility endpoints
+	g.GET("/subjects", a.subjects)
+	g.GET("/terms", a.availbleTerms)
 
-func (a *App) instructorGroup(g *gin.RouterGroup) {
-	g.GET("/instructor/:id", instructorFromID(a))
-	g.GET("/instructor/:id/courses", instructorCourses(a.DB))
-}
-
-func (a *App) listsGroup(g *gin.RouterGroup) *gin.RouterGroup {
 	lists := g.Group("/", listParamsMiddleware)
 	lists.GET("/lectures", ListLectures(a.DB))
 	lists.GET("/exams", ListExams(a.DB))
 	lists.GET("/labs", ListLabs(a.DB))
 	lists.GET("/discussions", ListDiscussions(a.DB))
 	lists.GET("/instructors", ListInstructors(a.DB))
-	return lists
+	lists.GET("/courses", termyearQueryMiddleware, a.listCourses)
+
+	ugroup := g.Group("/user")
+	ugroup.POST("/", a.PostUser)
+	ugroup.GET("/:id", idParamMiddleware, a.getUser)
+	ugroup.DELETE("/:id", idParamMiddleware, a.deleteUser)
+
+	inst := g.Group("/instructor")
+	inst.GET("/:id", instructorFromID(a))
+	inst.GET("/:id/courses", instructorCourses(a.DB))
 }
 
 // LectureGroup returns the router group for all the lecture routes.
@@ -53,6 +50,65 @@ func (a *App) lectureGroup(g *gin.RouterGroup) *gin.RouterGroup {
 		}
 	})
 	return lect
+}
+
+func (a *App) subjects(c *gin.Context) {
+	type response struct {
+		Code string `json:"code" db:"code"`
+		Name string `json:"name" db:"name"`
+	}
+	resp := make([]response, 0, 10)
+	err := a.DB.Select(&resp, "select code,name from subject")
+	if err != nil {
+		c.JSON(500, Error{Msg: "could not get subjects"})
+		return
+	}
+	c.JSON(200, resp)
+}
+
+func (a *App) availbleTerms(c *gin.Context) {
+	type response struct {
+		Year     int    `db:"year" json:"year"`
+		Term     int    `db:"term_id" json:"id"`
+		TermName string `db:"name" json:"name"`
+	}
+	resp := make([]response, 0, 5)
+	err := a.DB.Select(
+		&resp,
+		`SELECT year, term_id, term.name
+		   FROM course
+		   JOIN term ON term.id = term_id
+	   GROUP BY year, term_id, term.name`,
+	)
+	if err != nil {
+		c.JSON(500, Error{Msg: "could not get availible terms"})
+		return
+	}
+	c.JSON(200, resp)
+}
+
+func termyearQueryMiddleware(c *gin.Context) {
+	if term, ok := c.GetQuery("term"); ok {
+		switch term {
+		case "spring":
+			c.Set("term", 1)
+		case "summer":
+			c.Set("term", 2)
+		case "fall":
+			c.Set("term", 3)
+		default:
+			// TODO send back an error
+		}
+	}
+	if yearstr, ok := c.GetQuery("year"); ok {
+		year, err := strconv.ParseInt(yearstr, 10, 32)
+		if err != nil {
+			senderr(c, err, 500)
+			return
+		}
+		c.Set("year", year)
+	}
+	c.Next()
 }
 
 func crnParamMiddleware(c *gin.Context) {

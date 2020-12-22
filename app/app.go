@@ -43,7 +43,8 @@ func (a *App) GetUser(u users.User) (*users.User, error) {
 // GetInstructor will get an instructor by id
 func (a *App) GetInstructor(id interface{}) (*models.Instructor, error) {
 	var inst models.Instructor
-	row := a.DB.QueryRowx("SELECT * FROM instructor WHERE id = $1", id)
+	row := a.DB.QueryRowx(
+		"SELECT * FROM instructor WHERE id = $1", id)
 	if err := row.StructScan(&inst); err != nil {
 		return nil, ErrStatus(500, "could not get instructor")
 	}

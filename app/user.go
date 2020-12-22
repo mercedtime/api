@@ -35,6 +35,7 @@ func (a *App) PostUser(c *gin.Context) {
 	// TODO check auth for permissions to set is_admin
 	u.IsAdmin = false
 	u.CreatedAt = time.Time{} // zero out the time
+	u.ID = 0
 
 	if u.Password == "" {
 		c.JSON(400, ErrStatus(400, "no password for new user"))

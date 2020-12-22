@@ -90,17 +90,22 @@ func main() {
 		log.Fatal("nothing to be done. use '-db' or '-csv' or '--enrollment-only'")
 	}
 
-	var (
-		out io.Writer = os.Stdout
-	)
-
-	sch, err := ucm.NewSchedule(ucm.ScheduleConfig{Year: conf.Year, Term: conf.Term})
+	var out io.Writer = os.Stdout
+	sch, err := ucm.NewSchedule(ucm.ScheduleConfig{
+		Year:    conf.Year,
+		Term:    conf.Term,
+		Open:    false,
+		Subject: "",
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	if enrollmentOnly {
 		db, err := opendb(conf)
+		if err != nil {
+			log.Fatal(err)
+		}
 		defer db.Close()
 		err = recordHistoricalEnrollment(
 			db, conf.Year, termcodeMap[conf.Term], sch.Ordered())
@@ -139,18 +144,10 @@ func main() {
 	}
 
 	if csvOps {
-		schCP := make(ucm.Schedule)
-		for k, v := range sch {
-			cp := *v
-			if v.Exam != nil {
-				*cp.Exam = *v.Exam
-			}
-			schCP[k] = &cp
-		}
-		defer fmt.Print("csv files written ")
-		if err = writes(conf, tab, schCP); err != nil {
+		if err = writes(conf, tab); err != nil {
 			log.Fatal("CSV Error:", err)
 		}
+		fmt.Print("csv files written ")
 	}
 }
 
@@ -275,53 +272,28 @@ func updates(w io.Writer, db *sql.DB, tab *tables) (err error) {
 	return nil
 }
 
-func writes(conf updateConfig, tab *tables, sch ucm.Schedule) error {
+func writes(conf updateConfig, tab *tables) error {
 	var (
-		all = make([]interface{}, 0, len(tab.course))
-		err error
+		err         error
+		i           = 0
+		instructors = make([]interface{}, len(tab.instructorMap))
 	)
-	for _, a := range tab.aux {
-		all = append(all, a)
+	for _, in := range tab.instructorMap {
+		instructors[i] = &models.Instructor{ID: in.id, Name: in.name}
+		i++
 	}
-	if err = writeCSVFile("labs_disc.csv", all); err != nil {
-		return err
+	for file, data := range map[string][]interface{}{
+		"labs_disc.csv":  interfaceSlice(tab.aux),
+		"lecture.csv":    interfaceSlice(tab.lectures),
+		"exam.csv":       interfaceSlice(tab.exam),
+		"course.csv":     interfaceSlice(tab.course),
+		"instructor.csv": instructors,
+	} {
+		err = writeCSVFile(file, data)
+		if err != nil {
+			return err
+		}
 	}
-	all = all[:0]
-
-	for _, a := range tab.lectures {
-		all = append(all, a)
-	}
-	if err = writeCSVFile("lecture.csv", all); err != nil {
-		return err
-	}
-	all = all[:0]
-
-	for _, a := range tab.exam {
-		all = append(all, a)
-	}
-	if err = writeCSVFile("exam.csv", all); err != nil {
-		return err
-	}
-	all = all[:0]
-
-	for _, a := range tab.instructorMap {
-		all = append(all, &models.Instructor{
-			ID:   a.id,
-			Name: a.name,
-		})
-	}
-	if err = writeCSVFile("instructor.csv", all); err != nil {
-		return err
-	}
-	all = all[:0]
-
-	for _, a := range tab.course {
-		all = append(all, a)
-	}
-	if err = writeCSVFile("course.csv", all); err != nil {
-		return err
-	}
-	all = all[:0]
 	return nil
 }
 
