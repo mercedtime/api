@@ -45,7 +45,8 @@ var (
 
 	TimeFormat = "15:04:05"
 	// TimeFormat = time.RFC3339
-	DateFormat = time.RFC3339
+	// DateFormat = time.RFC3339
+	DateFormat = time.RFC3339Nano
 )
 
 // Lecture is a lecture

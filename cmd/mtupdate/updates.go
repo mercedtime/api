@@ -99,7 +99,8 @@ func createTmpTable(from string, tx execable, tmp string, rows []interface{}) (d
 		return
 	}
 	if len(rows) == 0 {
-		return drop, nil
+		// 	return drop, nil
+		panic("ok so this case where there are no rows actually does happen, come fix this updates.go")
 	}
 	q, _, err = goqu.Insert(tmp).Rows(rows).ToSQL()
 	if err != nil {
@@ -185,6 +186,11 @@ func updateCourseTable(db *sql.DB, courses []*catalog.Entry) error {
 		rows     = make([]interface{}, 0, len(courses))
 	)
 	for _, c := range courses {
+		// This check covers the case where the routine that
+		// gets the description fails to do so, If we do not
+		// skip empty descriptions it will be detected as
+		// changed and the empty value will be inserted.
+		// TODO: The function that gets description may not fail anymore.
 		if c.Description != "" {
 			rows = append(rows, c)
 		}
@@ -268,17 +274,20 @@ func updateLectureTable(
 		tmpTable = "_tmp_" + target
 		rows     = make([]interface{}, len(lectures))
 	)
+	// for i, l := range lectures {
+	// 	m := map[string]interface{}{
+	// 		"crn":           l.CRN,
+	// 		"start_time":    l.StartTime.Format(TimeFormat),
+	// 		"end_time":      l.EndTime.Format(TimeFormat),
+	// 		"start_date":    l.StartDate.Format(models.DateFormat),
+	// 		"end_date":      l.EndDate.Format(models.DateFormat),
+	// 		"instructor_id": l.InstructorID,
+	// 		"auto_updated":  1,
+	// 	}
+	// 	rows[i] = m
+	// }
 	for i, l := range lectures {
-		m := map[string]interface{}{
-			"crn":           l.CRN,
-			"start_time":    l.StartTime.Format(TimeFormat),
-			"end_time":      l.EndTime.Format(TimeFormat),
-			"start_date":    l.StartDate.Format(models.DateFormat),
-			"end_date":      l.EndDate.Format(models.DateFormat),
-			"instructor_id": l.InstructorID,
-			"auto_updated":  1,
-		}
-		rows[i] = m
+		rows[i] = l
 	}
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
 		Isolation: sql.LevelDefault,

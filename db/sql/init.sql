@@ -51,7 +51,7 @@ CREATE TABLE course (
     enrolled    INTEGER,
     remaining   INTEGER,
 
-    updated_at   TIMESTAMP DEFAULT now(),
+    updated_at   TIMESTAMPTZ DEFAULT now(),
     auto_updated INTEGER DEFAULT 0,
     year         INT NOT NULL,
     term_id      INT NOT NULL,
@@ -65,14 +65,14 @@ CREATE TABLE course (
 
 CREATE TABLE lectures (
     crn           INTEGER NOT NULL,
-    start_time    TIME,
-    end_time      TIME,
+    start_time    TIMESTAMPTZ,
+    end_time      TIMESTAMPTZ,
     start_date    DATE,
     end_date      DATE,
     instructor_id BIGINT, -- move to catalog
 
-    updated_at   TIMESTAMP DEFAULT now(),
-    auto_updated INTEGER DEFAULT 0,
+    updated_at   TIMESTAMPTZ DEFAULT now(),
+    auto_updated INTEGER     DEFAULT 0,
 
     FOREIGN KEY (instructor_id) REFERENCES instructor(id),
     PRIMARY KEY (crn),
@@ -86,12 +86,12 @@ CREATE TABLE aux (
     crn           INTEGER NOT NULL,
     course_crn    INTEGER,
     section       VARCHAR(16),
-    start_time    TIME,
-    end_time      TIME,
+    start_time    TIMESTAMPTZ,
+    end_time      TIMESTAMPTZ,
     building_room TEXT,
     instructor_id BIGINT, -- move to catalog
 
-    updated_at TIMESTAMP DEFAULT now(),
+    updated_at   TIMESTAMPTZ DEFAULT now(),
     auto_updated INTEGER DEFAULT 0,
 
     FOREIGN KEY (instructor_id) REFERENCES instructor (id),
@@ -102,8 +102,8 @@ CREATE TABLE aux (
 CREATE TABLE exam (
     crn        INTEGER NOT NULL,
     date       DATE,
-    start_time TIME,
-    end_time   TIME,
+    start_time TIMESTAMPTZ,
+    end_time   TIMESTAMPTZ,
     PRIMARY KEY (crn)
 );
 
@@ -116,7 +116,7 @@ CREATE TABLE enrollment (
     crn INTEGER NOT NULL, -- TODO change this to a course id when that is a thing
     year INT NOT NULL,
     term INT NOT NULL,
-    ts TIMESTAMP DEFAULT now(),
+    ts TIMESTAMPTZ DEFAULT now(),
     enrolled INT,
     capacity INT
 
@@ -201,3 +201,33 @@ CREATE VIEW enrollment_updates AS
        FROM enrollment
    GROUP BY ts
    ORDER BY ts DESC;
+
+
+     CREATE VIEW schedule_page AS
+          SELECT
+                c.crn,
+                c.subject,
+                c.course_num,
+                left(c.title, 25) as title,
+                c.units,
+                c.type,
+                c.days,
+                l.start_time::time,
+                l.end_time::time,
+                left(i.name, 40) as instructor,
+                c.capacity,
+                c.enrolled,
+                c.remaining
+           FROM course c
+LEFT OUTER JOIN (
+         SELECT crn, start_time, end_time, instructor_id
+           FROM aux
+          UNION
+         SELECT crn, start_time, end_time, instructor_id
+           FROM lectures
+       ) l ON c.crn = l.crn
+LEFT OUTER JOIN instructor i ON i.id = l.instructor_id
+          WHERE c.year = 2021
+       ORDER BY c.subject ASC,
+                c.course_num ASC,
+                c.type DESC;
