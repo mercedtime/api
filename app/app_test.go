@@ -10,31 +10,14 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
-	"github.com/lib/pq"
 	"github.com/mercedtime/api/db/models"
 	"github.com/mercedtime/api/users"
 )
 
 func Test(t *testing.T) {
-	days := []time.Weekday{
-		time.Monday,
-		time.Wednesday,
-		time.Friday,
-	}
-	s := make([]string, len(days))
-	for i, d := range days {
-		s[i] = d.String()
-	}
-	arr := pq.Array(s)
-	val, err := arr.Value()
-	if err != nil {
-		t.Fatal(err)
-	}
-	fmt.Println(val)
 }
 
 func TestArr(t *testing.T) {

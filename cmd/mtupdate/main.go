@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/doug-martin/goqu/v9"
 	"github.com/harrybrwn/config"
 	"github.com/harrybrwn/edu/school/ucmerced/ucm"
+	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 	"github.com/mercedtime/api/app"
 	"github.com/mercedtime/api/catalog"
@@ -341,6 +341,47 @@ func getInstructors(crs []*ucm.Course) map[string]*instructorMeta {
 	return instructors
 }
 
+func getLectures(courses []*ucm.Course, instructors map[string]*instructorMeta) ([]*models.Lecture, error) {
+	var (
+		list     = make([]*models.Lecture, 0, len(courses))
+		lectures = make(map[int]*ucm.Course, len(courses))
+	)
+
+	for _, c := range courses {
+		if c.Activity != models.Lect {
+			continue
+		}
+		if _, ok := lectures[c.CRN]; ok {
+			return nil, errors.New("lectures: tried to put a duplicate crn in lectures table")
+		}
+		lectures[c.CRN] = c
+		instructorID := int64(0)
+		instructor, ok := instructors[c.Instructor]
+		if !ok {
+			return nil, errors.New("could not find an instructor")
+		}
+		instructorID = instructor.id
+		// For type safety and so i get error messages
+		// when the schema changes
+
+		if c.Time.Start.Year() == 0 {
+			c.Time.Start = c.Time.Start.AddDate(1, 0, 0)
+		}
+		if c.Time.End.Year() == 0 {
+			c.Time.End = c.Time.End.AddDate(1, 0, 0)
+		}
+		list = append(list, &models.Lecture{
+			CRN:          c.CRN,
+			StartTime:    c.Time.Start,
+			EndTime:      c.Time.End,
+			StartDate:    c.Date.Start,
+			EndDate:      c.Date.End,
+			InstructorID: instructorID,
+		})
+	}
+	return list, nil
+}
+
 func getLabsTable(
 	courses []*ucm.Course,
 	sch ucm.Schedule,
@@ -364,6 +405,13 @@ func getLabsTable(
 			fmt.Println("Could not find instructor")
 		} else {
 			instructorID = instructor.id
+		}
+
+		if c.Time.Start.Year() == 0 {
+			c.Time.Start = c.Time.Start.AddDate(1, 0, 0)
+		}
+		if c.Time.End.Year() == 0 {
+			c.Time.End = c.Time.End.AddDate(1, 0, 0)
 		}
 		labs = append(labs, &models.LabDisc{
 			CRN:          c.CRN,
@@ -473,13 +521,14 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Entry, error
 					errs <- err
 				}
 				crs := catalog.Entry{
-					CRN:         c.CRN,
-					Subject:     c.Subject,
-					CourseNum:   c.Number,
-					Type:        c.Activity,
-					Title:       cleanTitle(c.Title),
-					Units:       c.Units,
-					Days:        str(c.Days),
+					CRN:       c.CRN,
+					Subject:   c.Subject,
+					CourseNum: c.Number,
+					Type:      c.Activity,
+					Title:     cleanTitle(c.Title),
+					Units:     c.Units,
+					Days:      daysString(c.Days),
+					// Days:        catalog.NewWeekdays(c.Days),
 					Description: info,
 					Capacity:    c.Capacity,
 					Enrolled:    c.Enrolled,
@@ -506,68 +555,20 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Entry, error
 	return result, err
 }
 
-func getLectures(courses []*ucm.Course, instructors map[string]*instructorMeta) ([]*models.Lecture, error) {
-	var (
-		list     = make([]*models.Lecture, 0, len(courses))
-		lectures = make(map[int]*ucm.Course, len(courses))
-	)
-
-	for _, c := range courses {
-		if c.Activity != models.Lect {
-			continue
-		}
-		if _, ok := lectures[c.CRN]; ok {
-			return nil, errors.New("lectures: tried to put a duplicate crn in lectures table")
-		}
-		lectures[c.CRN] = c
-		instructorID := int64(0)
-		instructor, ok := instructors[c.Instructor]
-		if !ok {
-			return nil, errors.New("could not find an instructor")
-		}
-		instructorID = instructor.id
-		// For type safety and so i get error messages
-		// when the schema changes
-		list = append(list, &models.Lecture{
-			CRN:          c.CRN,
-			StartTime:    c.Time.Start,
-			EndTime:      c.Time.End,
-			StartDate:    c.Date.Start,
-			EndDate:      c.Date.End,
-			InstructorID: instructorID,
-		})
-	}
-	return list, nil
-}
-
-func generateLectureInsert(sch ucm.Schedule) string {
-	insert := goqu.Insert("lectures")
-	rows := make([]*models.Lecture, 0, len(sch))
-	instructorID := int64(0)
-	for _, c := range sch.Ordered() {
-		l := &models.Lecture{
-			CRN:          c.CRN,
-			StartTime:    c.Time.Start,
-			EndTime:      c.Time.End,
-			StartDate:    c.Date.Start,
-			EndDate:      c.Date.End,
-			InstructorID: instructorID,
-		}
-		rows = append(rows, l)
-	}
-	s, _, err := insert.Rows(rows).ToSQL()
-	if err != nil {
-		panic(err)
-	}
-	return s
-}
-
 func daysString(days []time.Weekday) string {
 	var s = make([]string, len(days))
 	for i, d := range days {
-		s[i] = d.String()
+		s[i] = strings.ToLower(d.String())
 	}
-	return strings.Join(s, ";")
+	// return strings.Join(s, ";")
+
+	arr := pq.Array(s)
+	val, err := arr.Value()
+	if err != nil {
+		// return "{" + strings.Join(s, ",") + "}"
+		return "{}"
+	}
+	return val.(string)
 }
 
 func str(x interface{}) string {

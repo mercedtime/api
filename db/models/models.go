@@ -50,14 +50,17 @@ var (
 )
 
 // Lecture is a lecture
-type Lecture struct {
+type Lecture = PrimaryCourse
+
+// PrimaryCourse is a course which has the primary course matierial
+type PrimaryCourse struct {
 	CRN          int       `db:"crn" csv:"crn"`
 	StartTime    time.Time `db:"start_time" csv:"start_time" json:"start_time"`
 	EndTime      time.Time `db:"end_time" csv:"end_time" json:"end_time"`
 	StartDate    time.Time `db:"start_date" csv:"start_date" json:"start_date"`
 	EndDate      time.Time `db:"end_date" csv:"end_date" json:"end_date"`
 	InstructorID int64     `db:"instructor_id" csv:"instructor_id" json:"instructor_id"`
-	LastUpdated  time.Time `db:"updated_at" json:"updated_at" csv:"-"`
+	LastUpdated  time.Time `db:"updated_at" json:"updated_at" csv:"-" goqu:"skipupdate,skipinsert"`
 	AutoUpdated  int       `db:"auto_updated" json:"-" csv:"-"`
 }
 
@@ -92,7 +95,7 @@ type SubCourse struct {
 	Building     string    `db:"building_room" json:"building_room"`
 	InstructorID int64     `db:"instructor_id" json:"instructor_id"`
 
-	UpdatedAt   time.Time `db:"updated_at" json:"updated_at" csv:"-"`
+	UpdatedAt   time.Time `db:"updated_at" json:"updated_at" csv:"-" goqu:"skipupdate,skipinsert"`
 	AutoUpdated int       `db:"auto_updated" json:"-" csv:"-"`
 }
 

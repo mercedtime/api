@@ -7,6 +7,16 @@
 --     lectures,
 --     prerequisites;
 
+CREATE TYPE weekday AS ENUM(
+	'sunday',
+	'monday',
+	'tuesday',
+	'wednesday',
+	'thursday',
+	'friday',
+	'saturday'
+);
+
 CREATE TABLE term (
     id INT,
     name VARCHAR(6)
@@ -46,6 +56,7 @@ CREATE TABLE course (
 
     units       INTEGER,
     days        VARCHAR(65) DEFAULT '', -- max is the full name of all weekdays separated by ';'
+    -- days        text[],
     description TEXT,
     capacity    INTEGER,
     enrolled    INTEGER,

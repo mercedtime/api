@@ -25,9 +25,9 @@ func (a *App) RegisterRoutes(g *gin.RouterGroup) {
 	lists.GET("/labs", ListLabs(a.DB))
 	lists.GET("/discussions", ListDiscussions(a.DB))
 	lists.GET("/instructors", ListInstructors(a.DB))
-	lists.GET("/courses", termyearQueryMiddleware, a.listCourses)
+	lists.GET("/courses", termyearQueryMiddle, a.listCourses)
+	lists.GET("/catalog/:year/:term/courses", termyearParamMiddle, a.listCourses)
 	lists.GET("/catalog/:year/:term", termyearParamMiddle, getCatalog(a.DB))
-	// g.GET("/catalog/:year/:term", listParamsMiddleware, termyearParamMiddle, getCatalog(a.DB))
 
 	ugroup := g.Group("/user")
 	ugroup.POST("/", a.PostUser)
@@ -115,7 +115,7 @@ func setYear(c *gin.Context, year string) {
 	return
 }
 
-func termyearQueryMiddleware(c *gin.Context) {
+func termyearQueryMiddle(c *gin.Context) {
 	if term, ok := c.GetQuery("term"); ok {
 		setTerm(c, term)
 	}

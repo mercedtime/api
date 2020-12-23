@@ -33,23 +33,23 @@ type genquery struct {
 }
 
 var (
-	updateTmpl = `UPDATE {{ .Target }}{{ $n := sub (len .Vars) 1 }}
+	updateTmpl = `UPDATE "{{ .Target }}"{{ $n := sub (len .Vars) 1 }}
 SET {{ range $i, $v := .Vars }}
-  {{ $v }} = new.{{ $v }}{{ if ne $i $n }},{{ end }}
+  "{{ $v }}" = "new"."{{ $v }}"{{ if ne $i $n }},{{ end }}
 {{- end }}
   {{- if gt .AutoUpdate 0 -}},auto_updated = {{ .AutoUpdate }}{{ end }}
   {{- if .SetUpdated }},updated_at = now(){{ end }}
 FROM (
-  SELECT * FROM {{ .Tmp }} tmp
+  SELECT * FROM "{{ .Tmp }}" tmp
   WHERE NOT EXISTS (
-    SELECT * FROM {{ .Target }} target
+    SELECT * FROM "{{ .Target }}" target
     WHERE
       {{- range $i, $v := .Vars }}
-      tmp.{{ $v }} = target.{{ . }}{{ if ne $i $n }} AND{{end}}
+      "tmp"."{{ $v }}" = "target"."{{ . }}"{{ if ne $i $n }} AND{{end}}
       {{- end }}
   )
 ) new
-WHERE {{ .Target }}.crn = new.crn`
+WHERE "{{ .Target }}"."crn" = "new"."crn"`
 )
 
 func updatequery(data genquery) (string, error) {
@@ -353,20 +353,22 @@ func updateLabsTable(
 	var (
 		target   = "aux"
 		tmpTable = "_tmp_" + target
-		rows     = make([]interface{}, len(labs))
+		// rows     = make([]interface{}, len(labs))
+		rows = interfaceSlice(labs)
 	)
-	for i, l := range labs {
-		rows[i] = map[string]interface{}{
-			"crn":           l.CRN,
-			"course_crn":    l.CourseCRN,
-			"section":       l.Section,
-			"start_time":    l.StartTime.Format(TimeFormat),
-			"end_time":      l.EndTime.Format(TimeFormat),
-			"building_room": l.Building,
-			"instructor_id": l.InstructorID,
-			"auto_updated":  1,
-		}
-	}
+
+	// for i, l := range labs {
+	// 	rows[i] = map[string]interface{}{
+	// 		"crn":           l.CRN,
+	// 		"course_crn":    l.CourseCRN,
+	// 		"section":       l.Section,
+	// 		"start_time":    l.StartTime,
+	// 		"end_time":      l.EndTime,
+	// 		"building_room": l.Building,
+	// 		"instructor_id": l.InstructorID,
+	// 		"auto_updated":  1,
+	// 	}
+	// }
 
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
 		Isolation: sql.LevelDefault,
@@ -404,8 +406,7 @@ func updateLabsTable(
 			"start_time",
 			"end_time",
 			"building_room",
-			"instructor_id",
-		},
+			"instructor_id"},
 	})
 	if err != nil {
 		return err
@@ -424,13 +425,9 @@ func updateInstructorsTable(db *sql.DB, instructors map[string]*instructorMeta) 
 		rows     = make([]interface{}, 0, len(instructors))
 	)
 	for _, inst := range instructors {
-		in := models.Instructor{
+		rows = append(rows, &models.Instructor{
 			ID:   inst.id,
 			Name: inst.name,
-		}
-		rows = append(rows, map[string]interface{}{
-			"id":   in.ID,
-			"name": in.Name,
 		})
 	}
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
@@ -440,6 +437,7 @@ func updateInstructorsTable(db *sql.DB, instructors map[string]*instructorMeta) 
 	if err != nil {
 		return err
 	}
+
 	droptmp, err := createTmpTable(target, tx, tmpTable, rows)
 	defer func() {
 		e := droptmp()
@@ -473,16 +471,17 @@ func updateExamTable(db *sql.DB, exams []*models.Exam) error {
 	var (
 		target   = "exam"
 		tmpTable = "_tmp_" + target
-		rows     = make([]interface{}, len(exams))
+		rows     = interfaceSlice(exams)
+		// rows     = make([]interface{}, len(exams))
 	)
-	for i, e := range exams {
-		rows[i] = map[string]interface{}{
-			"crn":        e.CRN,
-			"date":       e.Date.Format(models.DateFormat),
-			"start_time": e.StartTime.Format(TimeFormat),
-			"end_time":   e.EndTime.Format(TimeFormat),
-		}
-	}
+	// for i, e := range exams {
+	// 	rows[i] = map[string]interface{}{
+	// 		"crn":        e.CRN,
+	// 		"date":       e.Date.Format(models.DateFormat),
+	// 		"start_time": e.StartTime,
+	// 		"end_time":   e.EndTime,
+	// 	}
+	// }
 
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
 		Isolation: sql.LevelDefault,

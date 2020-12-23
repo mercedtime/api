@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/harrybrwn/edu/school/ucmerced/ucm"
+	"github.com/lib/pq"
+	"github.com/mercedtime/api/catalog"
 )
 
 // GetSchema will get the database schema from a struct
@@ -112,6 +114,8 @@ func ToCSVRow(v interface{}) ([]string, error) {
 				s = string(arr)
 			case []time.Weekday:
 				s = daysString(arr)
+			case []catalog.Weekday:
+				s = weekdayStr(arr)
 			default:
 				return nil, errors.New("can't handle arrays")
 			}
@@ -131,4 +135,13 @@ func daysString(days []time.Weekday) string {
 		s[i] = d.String()
 	}
 	return strings.Join(s, ";")
+}
+
+func weekdayStr(days []catalog.Weekday) string {
+	arr := pq.Array(days)
+	val, err := arr.Value()
+	if err != nil {
+		return "{}"
+	}
+	return val.(string)
 }

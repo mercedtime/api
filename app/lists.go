@@ -122,8 +122,6 @@ WHERE c.crn IN (SELECT crn FROM exam)`
 			q += fmt.Sprintf(" OFFSET $%d", argc)
 			args = append(args, params.Offset)
 		}
-		log.Println(q)
-		fmt.Println(args)
 
 		err := db.Select(&result, q, args...)
 		if err != nil {
@@ -165,6 +163,7 @@ func (a *App) listCourses(c *gin.Context) {
 	}
 	err = a.DB.Select(&resp, query)
 	if err != nil {
+		log.Println(err)
 		c.JSON(500, Error{Msg: "could not query database"})
 		return
 	}
