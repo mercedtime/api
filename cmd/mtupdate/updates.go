@@ -16,6 +16,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/mercedtime/api/catalog"
 	"github.com/mercedtime/api/db/models"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -124,9 +125,32 @@ func updatequery(data genquery) (string, error) {
 	return buf.String(), err
 }
 
-func insertNew(target, tmp string, tx *sql.Tx) error {
-	q := fmt.Sprintf(`INSERT INTO %[1]s
-	SELECT * FROM %[2]s tmp WHERE NOT EXISTS (SELECT * FROM %[1]s c WHERE c.crn = tmp.crn)`, target, tmp)
+func insertNew(target, tmp string, tx *sql.Tx, cols ...string) error {
+	var q string
+	if len(cols) > 0 {
+		tmpl := `
+	  INSERT INTO %[1]s (
+		%[3]s
+	  )
+	  SELECT %[3]s FROM %[2]s tmp
+	  WHERE NOT EXISTS (
+	    SELECT * FROM %[1]s c
+	    WHERE c.crn = tmp.crn
+	  )`
+		q = fmt.Sprintf(
+			tmpl, target,
+			tmp, strings.Join(cols, ","),
+		)
+	} else {
+		tmpl := `
+	  INSERT INTO %[1]s
+	  SELECT * FROM %[2]s tmp
+	  WHERE NOT EXISTS (
+	    SELECT * FROM %[1]s c
+	    WHERE c.crn = tmp.crn
+	  )`
+		q = fmt.Sprintf(tmpl, target, tmp)
+	}
 	_, err := tx.Exec(q)
 	return err
 }
@@ -187,7 +211,8 @@ func (tu *tableUpdate) close() (err error) {
 
 type tmptable struct {
 	target, tmp string
-	tx          *sql.Tx
+
+	tx *sql.Tx
 }
 
 func newtmptable(target string, tx *sql.Tx) (*tmptable, error) {
@@ -277,18 +302,31 @@ func updateCourseTable(db *sqlx.DB, courses []*catalog.Entry) (err error) {
 	if err != nil {
 		return err
 	}
-	defer tmp.close()
+	defer func() {
+		tmp.close()
+		if err == nil {
+			err = tx.Commit()
+		}
+	}()
 
 	cols := []string{
-		"crn", "subject", "course_num",
-		"type", "title", "units", "days",
-		"description", "capacity",
-		"enrolled", "remaining",
-		"year", "term_id",
+		"crn",
+		"subject",
+		"course_num",
+		"type",
+		"title",
+		"units",
+		"days",
+		"description",
+		"capacity",
+		"enrolled",
+		"remaining",
+		"year",
+		"term_id",
 	}
 	stmt, err := tx.Prepare(pq.CopyIn(tmpTable, cols...))
 	if err != nil {
-		return err
+		return errors.Wrap(err, "could not create prepared statment")
 	}
 	for _, c := range courses {
 		if c.Description == "" {
@@ -300,18 +338,18 @@ func updateCourseTable(db *sqlx.DB, courses []*catalog.Entry) (err error) {
 		)
 		if err != nil {
 			stmt.Close()
-			return err
+			return errors.Wrap(err, "could not insert into temp course table")
 		}
 	}
 	if err = stmt.Close(); err != nil {
 		return err
 	}
-	if err = insertNew(target, tmpTable, tx.Tx); err != nil {
-		return err
+	if err = insertNew(target, tmpTable, tx.Tx, cols...); err != nil {
+		return errors.Wrap(err, "could not insert new values from tmp course table")
 	}
 
-	// auto_updated = 2 for generate updates
 	var q string
+	// auto_updated = 2 for generate updates
 	q, err = updatequery(genquery{
 		Target:     target,
 		Tmp:        tmpTable,
@@ -333,12 +371,12 @@ func updateCourseTable(db *sqlx.DB, courses []*catalog.Entry) (err error) {
 		},
 	})
 	if err != nil {
-		return err
+		return errors.Wrap(err, "could not generate update query")
 	}
 	if _, err = tx.Exec(q); err != nil {
-		return err
+		return errors.Wrap(err, "could not perform updates from temp course table")
 	}
-	return tx.Commit()
+	return nil
 }
 
 func updateLectureTable(
@@ -412,6 +450,7 @@ func updateLabsTable(
 	if err != nil {
 		return err
 	}
+
 	droptmp, err := createTmpTable(target, tx, tmpTable, rows)
 	defer func() {
 		e := droptmp()

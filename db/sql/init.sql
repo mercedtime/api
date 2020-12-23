@@ -242,3 +242,29 @@ LEFT OUTER JOIN instructor i ON i.id = l.instructor_id
        ORDER BY c.subject ASC,
                 c.course_num ASC,
                 c.type DESC;
+
+
+CREATE VIEW catalog_all AS
+     SELECT c.*, array_to_json(sub) AS subcourse
+       FROM course c
+ LEFT OUTER JOIN (
+     SELECT array_agg(join_build_object(
+		    'crn',               aux.crn,
+		    'course_crn',        aux.course_crn,
+		    'section',           aux.section,
+		    'days',              course.days,
+		    'enrolled',          course.enrolled,
+		    'start_time',        aux.start_time,
+		    'end_time',          aux.end_time,
+		    'building_room',     aux.building_room,
+		    'instructor_id',     aux.instructor_id,
+		    'updated_at',        aux.updated_at,
+		    'course_updated_at', course.updated_at
+     )) AS sub, course_crn
+      FROM aux
+      JOIN course ON aux.crn = course.crn
+     WHERE aux.course_crn != 0
+  GROUP BY aux.course_crn
+) a
+        ON c.crn = a.course_crn
+     WHERE c.crn IN (SELECT crn FROM exam);

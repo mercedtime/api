@@ -227,8 +227,7 @@ func updates(w io.Writer, db *sqlx.DB, tab *tables) (err error) {
 	// via foreign key constrains.
 
 	if err = updateCourseTable(db, tab.course); err != nil {
-		log.Println(err)
-		return err
+		return errors.Wrap(err, "update course failed")
 	}
 	fmt.Fprintf(w, "%v ok|lectures:", time.Now().Sub(t))
 	t = time.Now()

@@ -17,13 +17,12 @@ func ListInstructors(db *sqlx.DB) gin.HandlerFunc {
 	var list []models.Instructor
 	return func(c *gin.Context) {
 		list = nil
-		err := db.Select(
-			&list,
+		err := db.Select(&list,
 			"SELECT * FROM instructor LIMIT $1 OFFSET $2",
 			c.MustGet("limit"), c.MustGet("offset"),
 		)
 		if err != nil {
-			c.JSON(500, map[string]interface{}{"error": err})
+			c.JSON(500, NewErr(err.Error()))
 			return
 		}
 		c.JSON(200, list)
@@ -71,6 +70,7 @@ func labsForLecture(db *sqlx.DB) gin.HandlerFunc {
 		err = db.Select(&list, query, crn)
 		if err != nil {
 			senderr(c, err, 500)
+			return
 		}
 		c.JSON(200, list)
 	}
@@ -102,9 +102,9 @@ func exam(db *sqlx.DB) gin.HandlerFunc {
 	return getFromCRN(db, examQuery, &e)
 }
 
-func getLectureInstructors(db *sqlx.DB, crn int) ([]*models.Instructor, error) {
+func getLectureInstructors(db *sql.DB, crn int) ([]*models.Instructor, error) {
 	var (
-		insts = make([]*models.Instructor, 0)
+		insts = make([]*models.Instructor, 0, 64)
 		query = `
 		  SELECT id, name
 		  FROM lectures, instructor
@@ -122,15 +122,15 @@ func getLectureInstructors(db *sqlx.DB, crn int) ([]*models.Instructor, error) {
 		}
 		insts = append(insts, inst)
 	}
-	if err = rows.Close(); err != nil {
+	if err = rows.Err(); err != nil {
 		return nil, err
 	}
-	return insts, nil
+	return insts, rows.Close()
 }
 
 func instructorFromLectureCRN(db *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		insts, err := getLectureInstructors(db, c.GetInt("crn"))
+		insts, err := getLectureInstructors(db.DB, c.GetInt("crn"))
 		if err == sql.ErrNoRows {
 			c.JSON(404, &Error{
 				Msg: "could not find that instructor",

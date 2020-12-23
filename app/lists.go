@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
+	_ "github.com/doug-martin/goqu/v9/dialect/postgres" // need postgres dialect
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 	"github.com/mercedtime/api/catalog"
@@ -19,9 +20,84 @@ import (
 
 // PageParams are url params for api pagination
 type PageParams struct {
-	Limit  int `form:"limit" query:"limit" db:"limit"`
-	Offset int `form:"offset" query:"offset" db:"offset"`
+	Limit  uint `form:"limit"  query:"limit"  db:"limit"`
+	Offset uint `form:"offset" query:"offset" db:"offset"`
 }
+
+func (pp *PageParams) toExpr() goqu.Ex {
+	ex := goqu.Ex{}
+	if pp.Limit != 0 {
+		ex["limit"] = pp.Limit
+	}
+	if pp.Offset != 0 {
+		ex["offset"] = pp.Offset
+	}
+	return ex
+}
+
+func (pp *PageParams) appendSelect(stmt *goqu.SelectDataset) *goqu.SelectDataset {
+	if pp.Limit != 0 {
+		stmt = stmt.Limit(pp.Limit)
+	}
+	if pp.Offset != 0 {
+		stmt = stmt.Offset(pp.Offset)
+	}
+	return stmt
+}
+
+func (pp *PageParams) asSQL(stmtIndex int) (string, []interface{}, int) {
+	var (
+		q    string
+		args = make([]interface{}, 0, 2)
+	)
+	if pp.Limit != 0 {
+		args = append(args, pp.Limit)
+		q += fmt.Sprintf(" LIMIT $%d", stmtIndex)
+		stmtIndex++
+	}
+	if pp.Offset != 0 {
+		args = append(args, pp.Offset)
+		q += fmt.Sprintf(" OFFSET $%d", stmtIndex)
+		stmtIndex++
+	}
+	return q, args, stmtIndex
+}
+
+// Expression implements the goqu.Expression interface
+func (pp *PageParams) Expression() goqu.Expression { return pp.toExpr() }
+
+// Clone implements the goqu.Expression interface
+func (pp *PageParams) Clone() goqu.Expression { return pp.toExpr() }
+
+// SemesterParams is a structure that defines
+// parameters that control which courses are returned from a query
+type SemesterParams struct {
+	Year    int    `form:"year" uri:"year" query:"year" db:"year"`
+	Term    string `form:"term" uri:"term" query:"term" db:"term_id"`
+	Subject string `form:"subject" query:"subject" db:"subject"`
+}
+
+func (sp *SemesterParams) toExpr() goqu.Ex {
+	ex := goqu.Ex{}
+	if sp.Year != 0 {
+		ex["year"] = sp.Year
+	}
+	if sp.Term != "" {
+		if id := getTermID(sp.Term); id != 0 {
+			ex["term_id"] = id
+		}
+	}
+	if sp.Subject != "" {
+		ex["subject"] = sp.Subject
+	}
+	return ex
+}
+
+// Expression implements the goqu.Expression interface
+func (sp *SemesterParams) Expression() goqu.Expression { return sp.toExpr() }
+
+// Clone implements the goqu.Expression interface
+func (sp *SemesterParams) Clone() goqu.Expression { return sp.toExpr() }
 
 func listParamsMiddleware(c *gin.Context) {
 	for _, key := range []string{"limit", "offset"} {
@@ -43,7 +119,7 @@ func listParamsMiddleware(c *gin.Context) {
 
 // SubCourseList is a list of SubCourses that maintains
 // interoperability with postgresql json blobs.
-type SubCourseList []struct {
+type subCourseList []struct {
 	models.SubCourse
 
 	Enrolled        int              `db:"enrolled" json:"enrolled"`
@@ -53,7 +129,7 @@ type SubCourseList []struct {
 
 // Scan will convert the list of subcourses from json
 // to a serialized struct slice.
-func (sc *SubCourseList) Scan(val interface{}) error {
+func (sc *subCourseList) Scan(val interface{}) error {
 	b, ok := val.([]byte)
 	if ok {
 		return json.Unmarshal(b, sc)
@@ -65,73 +141,71 @@ func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 	var (
 		// TODO fix time parsing so I can un-comment out the following SQL
 		catalogQuery = `
-SELECT c.*, array_to_json(sub) AS subcourses FROM
-  course c
-LEFT OUTER JOIN
-  (
-      SELECT
-        course_crn,
-        array_agg(json_build_object(
-		  'crn', aux.crn,
-		  'course_crn', aux.course_crn,
-		  'section', aux.section,
-		  'days', course.days,
-		  'enrolled', course.enrolled,
-		  'start_time', aux.start_time,
-		  'end_time', aux.end_time,
-		  'building_room', aux.building_room,
-		  'instructor_id', aux.instructor_id,
-		  'updated_at', aux.updated_at,
-		  'course_updated_at', course.updated_at
+SELECT c.*, array_to_json(sub) AS subcourses
+FROM course c
+LEFT OUTER JOIN (
+	SELECT
+		course_crn,
+		array_agg(json_build_object(
+			'crn', aux.crn,
+			'course_crn', aux.course_crn,
+			'section', aux.section,
+			'days', course.days,
+			'enrolled', course.enrolled,
+			'start_time', aux.start_time,
+			'end_time', aux.end_time,
+			'building_room', aux.building_room,
+			'instructor_id', aux.instructor_id,
+			'updated_at', aux.updated_at,
+			'course_updated_at', course.updated_at
 		)) AS sub
-	    FROM aux
-		JOIN course ON aux.crn = course.crn
-	   WHERE aux.course_crn != 0
-	GROUP BY aux.course_crn
+		 FROM aux
+		 JOIN course ON aux.crn = course.crn
+	    WHERE aux.course_crn != 0
+	 GROUP BY aux.course_crn
   ) a
-ON c.crn = a.course_crn
-WHERE c.crn IN (SELECT crn FROM exam)`
+           ON c.crn = a.course_crn
+		WHERE c.crn IN (SELECT crn FROM exam)`
 		addons = map[string]string{
 			"year": " AND c.year = $%d",
 			"term": " AND c.term_id = $%d",
 		}
 	)
-
 	type response struct {
 		catalog.Entry
-		Subcourses SubCourseList `db:"subcourses" json:"subcourses"`
+		Subcourses subCourseList `db:"subcourses" json:"subcourses"`
 	}
 
 	return func(c *gin.Context) {
 		var (
 			q      = catalogQuery
 			args   = make([]interface{}, 0, 5)
-			argc   = 0
+			argc   = 1
 			result = make([]response, 0, 32)
 			params = PageParams{}
 		)
 		if err := c.BindQuery(&params); err != nil {
-			log.Println(err)
 			c.JSON(500, &Error{err.Error(), 500})
 			return
 		}
 
 		for key, addon := range addons {
 			if param, ok := c.Get(key); ok && param != nil {
-				argc++
 				q += fmt.Sprintf(addon, argc)
 				args = append(args, param)
+				argc++
 			}
 		}
+
 		if params.Limit != 0 {
-			argc++
 			q += fmt.Sprintf(" LIMIT $%d", argc)
 			args = append(args, params.Limit)
+			argc++
 		}
 		if params.Offset != 0 {
-			argc++
 			q += fmt.Sprintf(" OFFSET $%d", argc)
 			args = append(args, params.Offset)
+			argc++
 		}
 
 		err := db.Select(&result, q, args...)
@@ -147,34 +221,32 @@ var listCoursesQuery = `select * from course `
 
 func (a *App) listCourses(c *gin.Context) {
 	var (
-		resp   = make([]catalog.Entry, 0, 500)
-		params = goqu.Ex{}
+		resp = make([]catalog.Entry, 0, 500)
+		p    struct {
+			SemesterParams
+			PageParams
+		}
 	)
-	if year, ok := c.Get("year"); ok {
-		params["year"] = year
-	}
-	if term, ok := c.Get("term"); ok {
-		params["term_id"] = term
-	}
-	if subj, ok := c.GetQuery("subject"); ok {
-		params["subject"] = subj
-	}
 
-	// TODO tell goqu to generate a prepared statment to
-	// prevent sql injection
-	stmt := goqu.From("course").Select("*").Where(params)
-	if limit, ok := c.Get("limit"); ok && limit != nil {
-		stmt = stmt.Limit(limit.(uint))
+	err := c.Bind(&p)
+	if err != nil {
+		senderr(c, err, 400)
+		return
 	}
-	if offset, ok := c.Get("offset"); ok && offset != nil {
-		stmt = stmt.Offset(offset.(uint))
-	}
-	query, _, err := stmt.ToSQL()
+	stmt := goqu.From("course").SetDialect(
+		goqu.GetDialect("postgres"),
+	).Prepared(true).Select(
+		"*",
+	).Where(
+		p.SemesterParams.Expression(),
+	)
+	stmt = p.PageParams.appendSelect(stmt)
+	query, args, err := stmt.ToSQL()
 	if err != nil {
 		c.JSON(500, Error{Msg: "internal error"})
 		return
 	}
-	err = a.DB.Select(&resp, query)
+	err = a.DB.Select(&resp, query, args...)
 	if err != nil {
 		log.Println(err)
 		c.JSON(500, Error{Msg: "could not query database"})
@@ -202,7 +274,7 @@ func ListLectures(db *sqlx.DB) func(*gin.Context) {
 		lectures []models.Lecture
 		// TODO tell goqu to generate a prepared statment to
 		// prevent sql injection
-		stmt = goqu.From("lectures").Select(
+		stmt = goqu.From("lectures").SetDialect(goqu.GetDialect("postgres")).Prepared(true).Select(
 			interfaceSlice(models.GetNamedSchema("lectures", models.Lecture{}))...)
 	)
 	return func(c *gin.Context) {
@@ -223,13 +295,13 @@ func ListLectures(db *sqlx.DB) func(*gin.Context) {
 		if offset, ok := c.Get("offset"); ok && offset != nil {
 			q = q.Offset(offset.(uint))
 		}
-
-		query, _, err := q.ToSQL()
+		query, args, err := q.ToSQL()
 		if err != nil {
 			senderr(c, err, 500)
 			return
 		}
-		err = db.Select(&lectures, query)
+
+		err = db.Select(&lectures, query, args...)
 		if err == sql.ErrNoRows {
 			c.JSON(404, Error{"no lectures found", 404})
 			return

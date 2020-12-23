@@ -116,6 +116,8 @@ func ToCSVRow(v interface{}) ([]string, error) {
 				s = daysString(arr)
 			case []catalog.Weekday:
 				s = weekdayStr(arr)
+			case catalog.Weekdays:
+				s = weekdayStr(arr)
 			default:
 				return nil, errors.New("can't handle arrays")
 			}
@@ -141,6 +143,9 @@ func weekdayStr(days []catalog.Weekday) string {
 	arr := pq.Array(days)
 	val, err := arr.Value()
 	if err != nil {
+		return "{}"
+	}
+	if val == nil {
 		return "{}"
 	}
 	return val.(string)

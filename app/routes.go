@@ -23,8 +23,7 @@ func (a *App) RegisterRoutes(g *gin.RouterGroup) {
 	lists.GET("/labs", ListLabs(a.DB))
 	lists.GET("/discussions", ListDiscussions(a.DB))
 	lists.GET("/instructors", ListInstructors(a.DB))
-	lists.GET("/courses", termyearQueryMiddle, a.listCourses)
-	lists.GET("/catalog/:year/:term/courses", termyearParamMiddle, a.listCourses)
+	g.GET("/courses", termyearQueryMiddle, a.listCourses)
 	lists.GET("/catalog/:year/:term", termyearParamMiddle, getCatalog(a.DB))
 
 	ugroup := g.Group("/user")
@@ -88,19 +87,26 @@ func (a *App) availbleTerms(c *gin.Context) {
 	c.JSON(200, resp)
 }
 
-func setTerm(c *gin.Context, term string) {
+func getTermID(term string) int {
 	switch term {
 	case "spring":
-		c.Set("term", 1)
+		return 1
 	case "summer":
-		c.Set("term", 2)
+		return 2
 	case "fall":
-		c.Set("term", 3)
+		return 3
 	default:
+		return 0
+	}
+}
+
+func setTerm(c *gin.Context, term string) {
+	id := getTermID(term)
+	if id == 0 {
 		c.AbortWithStatusJSON(400, &Error{"invalid term", 400})
 		return
 	}
-	return
+	c.Set("term", id)
 }
 
 func setYear(c *gin.Context, year string) {

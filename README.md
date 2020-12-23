@@ -1,21 +1,24 @@
 # MercedTime's REST API
 
-| method     | endpoint                            | description                         | protected |
-| ------     | --------                            | -----------                         | --------- |
-| **GET**    | [`/lectures`](#list-lectures)       | List lectures                       | ❌        |
-| **GET**    | [`/labs`](#list-labs)               | List labs                           | ❌        |
-| **GET**    | [`/exams`](#list-exams)             | List exams                          | ❌        |
-| **GET**    | [`/discussions`](#list-discussions) | List discussions                    | ❌        |
-| **GET**    | [`/instructors`](#list-instructors) | List instructors                    | ❌        |
-| **GET**    | `/lecture/:crn`                     | Get a lecture                       | ❌        |
-| **DELETE** | `/lecture/:crn`                     | Delete a lecture                    | ✔️         |
-| **GET**    | `/lecture/:crn/exam`                | Get a lecture's exam                | ❌        |
-| **GET**    | `/lecture/:crn/labs`                | Get a lecture's lab sections        | ❌        |
-| **GET**    | `/lecture/:crn/instructor`          | Get a lecture's list of instructors | ❌        |
-| **GET**    | `/user/:id`                         | Get a user                          | ✔️         |
-| **POST**   | `/user`                             | Create a user                       | ✔️         |
-| **DELETE** | `/user/:id`                         | Delete a user                       | ✔️         |
-| **POST**   | `/login`                            | Get login credentials               | ❌        |
+| method     | endpoint                            | description                                  | protected |
+| ------     | --------                            | -----------                                  | --------- |
+| **GET**    | [`/lectures`](#list-lectures)       | List lectures                                | ❌        |
+| **GET**    | [`/labs`](#list-labs)               | List labs                                    | ❌        |
+| **GET**    | [`/exams`](#list-exams)             | List exams                                   | ❌        |
+| **GET**    | [`/discussions`](#list-discussions) | List discussions                             | ❌        |
+| **GET**    | [`/instructors`](#list-instructors) | List instructors                             | ❌        |
+| **GET**    | `/courses`                          | Get a list of courses                        | ❌        |
+| **GET**    | `/lecture/:crn`                     | Get a lecture                                | ❌        |
+| **DELETE** | `/lecture/:crn`                     | Delete a lecture                             | ✔️         |
+| **GET**    | `/lecture/:crn/exam`                | Get a lecture's exam                         | ❌        |
+| **GET**    | `/lecture/:crn/labs`                | Get a lecture's lab sections                 | ❌        |
+| **GET**    | `/lecture/:crn/instructor`          | Get a lecture's list of instructors          | ❌        |
+| **GET**    | `/user/:id`                         | Get a user                                   | ✔️         |
+| **POST**   | `/user`                             | Create a user                                | ✔️         |
+| **DELETE** | `/user/:id`                         | Delete a user                                | ✔️         |
+| **POST**   | `/login`                            | Get login credentials                        | ❌        |
+| **GET**    | `/catalog/:year/:term/all`          | Get the full course catalog for one semester | ❌        |
+| **GET**    | `/catalog/:year/:term/courses`      | Get a list of courses                        | ❌        |
 
 # TODO: Coding Shit
 
@@ -27,7 +30,8 @@
 - GET /lecture/:crn/enrollment For getting the historic enrollment stats
 - GET /standalone
 - Add a "last notified" field to the user table. If we want to do notifications
-  in the future we will probably need to do date comparisons with recently updated courses
+  in the future we will probably need to do date comparisons with recently
+  updated courses
 - To control which year and term for which the data is returned, write a
   "State" struct that contains this global route state to be accessed globally
   be the api. (maybe make a new internal package routes with "routes.State")
@@ -37,7 +41,8 @@
 - What is the best way to expose enrollment data in the api?
 - Need to build a prerequisites tree.
 - The instructor id system is a horrible hack, use a SERIAL type instead
-- To make this useful for different terms, we cannot rely on crn as our only primary key, need to start making my own course ids
+- To make this useful for different terms, we cannot rely on crn as our only
+  primary key, need to start making my own course ids
 
 ---
 
@@ -140,7 +145,8 @@ Responses with a [JSON Web Token (_JWT_)](https://jwt.io/)
 
 ### Errors
 
-Most of the endpoints will respond with the same error type that looks something like this.
+Most of the endpoints will respond with the same error type that looks
+something like this.
 
 ```json
 {
