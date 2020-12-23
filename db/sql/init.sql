@@ -55,8 +55,8 @@ CREATE TABLE course (
     title      VARCHAR(1024),
 
     units       INTEGER,
-    days        VARCHAR(65) DEFAULT '', -- max is the full name of all weekdays separated by ';'
-    -- days        text[],
+    -- days        VARCHAR(65) DEFAULT '', -- max is the full name of all weekdays separated by ';'
+    days        text[],
     description TEXT,
     capacity    INTEGER,
     enrolled    INTEGER,

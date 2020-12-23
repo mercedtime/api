@@ -9,10 +9,11 @@ import (
 	"log"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/harrybrwn/edu/school/ucmerced/ucm"
+	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 	"github.com/mercedtime/api/catalog"
 	"github.com/mercedtime/api/db/models"
 )
@@ -43,20 +44,79 @@ FROM (
   SELECT * FROM "{{ .Tmp }}" tmp
   WHERE NOT EXISTS (
     SELECT * FROM "{{ .Target }}" target
-    WHERE
+	WHERE
+	  tmp.crn = target.crn AND
       {{- range $i, $v := .Vars }}
       "tmp"."{{ $v }}" = "target"."{{ . }}"{{ if ne $i $n }} AND{{end}}
       {{- end }}
   )
 ) new
 WHERE "{{ .Target }}"."crn" = "new"."crn"`
+	tableDiffTempl = `
+	SELECT * FROM {{ .Tmp }} tmp {{ $n := sub (len .Vars) 1 }}
+	WHERE NOT EXISTS (
+	  SELECT * FROM {{ .Target }} target
+	  WHERE
+	    tmp.crn = target.crn AND
+		{{- range $i, $v := .Vars }}
+		tmp.{{ $v }} = target.{{ . }}{{if ne $i $n }} AND{{end}}
+		{{- end }}
+	)`
+	tmplFuncs = template.FuncMap{
+		"sub": func(a, b int) int { return a - b },
+	}
 )
+
+func printTableDiff(tx *sql.Tx, data genquery) error {
+	tmpl, err := template.New("debug").Funcs(tmplFuncs).Parse(tableDiffTempl)
+	if err != nil {
+		log.Fatal(err)
+	}
+	b := bytes.Buffer{}
+	if err = tmpl.Execute(&b, data); err != nil {
+		return err
+	}
+	rows, err := tx.Query(b.String())
+	if err != nil {
+		return err
+	}
+	if err = printQueryRows(rows); err != nil {
+		return err
+	}
+	return rows.Close()
+}
+
+func printQueryRows(rows *sql.Rows) error {
+	cols, err := rows.Columns()
+	if err != nil {
+		return err
+	}
+	fmt.Println(cols)
+	i := 0
+	for rows.Next() {
+		columns := make([]interface{}, len(cols))
+		ptrs := make([]interface{}, len(cols))
+		for i := 0; i < len(cols); i++ {
+			ptrs[i] = &columns[i]
+		}
+		if err = rows.Scan(ptrs...); err != nil {
+			return err
+		}
+		for i, col := range cols {
+			fmt.Printf("%v: %v, ", col, columns[i])
+		}
+		fmt.Println()
+		i++
+	}
+	fmt.Println(i, "updated rows")
+	return nil
+}
 
 func updatequery(data genquery) (string, error) {
 	var buf bytes.Buffer
-	tmpl, err := template.New("sql-update-gen").Funcs(
-		template.FuncMap{"sub": func(a, b int) int { return a - b }},
-	).Parse(updateTmpl)
+	tmpl, err := template.New(
+		"sql-update-gen",
+	).Funcs(tmplFuncs).Parse(updateTmpl)
 	if err != nil {
 		return "", err
 	}
@@ -80,6 +140,77 @@ func cleanTitle(title string) string {
 
 type execable interface {
 	Exec(string, ...interface{}) (sql.Result, error)
+}
+
+type tableUpdate struct {
+	target, tmp string
+	tx          *sqlx.Tx
+	err         error
+}
+
+func newUpdate(target string, tx *sqlx.Tx) (*tableUpdate, error) {
+	u := &tableUpdate{
+		target: target,
+		tmp:    "_tmp_" + target,
+		tx:     tx,
+		err:    nil,
+	}
+	_, u.err = tx.Exec(fmt.Sprintf("SELECT * INTO %s FROM %s LIMIT 0", u.tmp, u.target))
+	if u.err != nil {
+		return nil, u.err
+	}
+	return u, nil
+}
+
+func (tu *tableUpdate) start(columns ...string) error {
+	// stmt, err := tu.tx.Prepare(pq.CopyIn(tu.tmp, columns...))
+	// if err != nil {
+	// 	return err
+	// }
+	return nil
+}
+
+func (tu *tableUpdate) close() (err error) {
+	// drop the table no matter what
+	_, err = tu.tx.Exec("DROP TABLE " + tu.tmp)
+	if err != nil {
+		tu.tx.Rollback()
+		return err
+	}
+	if tu.err != nil {
+		tu.tx.Rollback()
+		return tu.err
+	}
+	// commit if everything went ok
+	return tu.tx.Commit()
+}
+
+type tmptable struct {
+	target, tmp string
+	tx          *sql.Tx
+}
+
+func newtmptable(target string, tx *sql.Tx) (*tmptable, error) {
+	t := &tmptable{
+		target: target,
+		tmp:    "_tmp_" + target,
+		tx:     tx,
+	}
+	_, err := tx.Exec(
+		fmt.Sprintf("SELECT * INTO %s FROM %s LIMIT 0", t.tmp, t.target))
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func (t *tmptable) String() string {
+	return t.tmp
+}
+
+func (t *tmptable) close() error {
+	_, err := t.tx.Exec(fmt.Sprintf("DROP TABLE %s", t.tmp))
+	return err
 }
 
 // TODO:
@@ -112,54 +243,6 @@ func createTmpTable(from string, tx execable, tmp string, rows []interface{}) (d
 	return drop, nil
 }
 
-// RawCourse is a raw course row
-type RawCourse struct {
-	CRN         int       `db:"crn" goqu:"skipupdate"`
-	Subject     string    `db:"subject"`
-	CourseNum   int       `db:"course_num"`
-	Title       string    `db:"title"`
-	Units       int       `db:"units"`
-	Type        string    `db:"type"`
-	Days        string    `db:"days"`
-	StartTime   time.Time `db:"start_time"`
-	EndTime     time.Time `db:"end_time"`
-	StartDate   time.Time `db:"start_date"`
-	EndDate     time.Time `db:"end_date"`
-	Instructor  string    `db:"instructor"`
-	Description string    `db:"description"`
-	Capacity    int       `db:"capacity"`
-	Enrolled    int       `db:"enrolled"`
-	Remaining   int       `db:"remaining"`
-}
-
-func insertRawRow(table string, sch ucm.Schedule) (string, error) {
-	var (
-		rows = make([]RawCourse, sch.Len())
-	)
-	for i, c := range sch.Ordered() {
-		rows[i] = RawCourse{
-			CRN:         c.CRN,
-			Subject:     c.Subject,
-			CourseNum:   c.CourseNumber(),
-			Title:       cleanTitle(c.Title),
-			Units:       c.Units,
-			Type:        c.Activity,
-			Days:        str(c.Days),
-			StartTime:   c.Time.Start,
-			EndTime:     c.Time.End,
-			StartDate:   c.Date.Start,
-			EndDate:     c.Date.End,
-			Instructor:  c.Instructor,
-			Description: "",
-			Capacity:    c.Capacity,
-			Enrolled:    c.Enrolled,
-			Remaining:   c.SeatsOpen(),
-		}
-	}
-	q, _, err := goqu.Insert(table).Rows(rows).ToSQL()
-	return q, err
-}
-
 func recordHistoricalEnrollment(db *sql.DB, year, termcode int, crs []*ucm.Course) error {
 	var rows = make([]interface{}, 0, len(crs))
 	for _, c := range crs {
@@ -179,30 +262,100 @@ func recordHistoricalEnrollment(db *sql.DB, year, termcode int, crs []*ucm.Cours
 	return err
 }
 
-func updateCourseTable(db *sql.DB, courses []*catalog.Entry) error {
+func updateCourseTable(db *sqlx.DB, courses []*catalog.Entry) (err error) {
 	var (
 		target   = "course"
 		tmpTable = "_tmp_" + target
-		rows     = make([]interface{}, 0, len(courses))
 	)
+	tx, err := db.BeginTxx(context.Background(), &sql.TxOptions{
+		Isolation: sql.LevelDefault, ReadOnly: false,
+	})
+	if err != nil {
+		return err
+	}
+	tmp, err := newtmptable(target, tx.Tx)
+	if err != nil {
+		return err
+	}
+	defer tmp.close()
+
+	cols := []string{
+		"crn", "subject", "course_num",
+		"type", "title", "units", "days",
+		"description", "capacity",
+		"enrolled", "remaining",
+		"year", "term_id",
+	}
+	stmt, err := tx.Prepare(pq.CopyIn(tmpTable, cols...))
+	if err != nil {
+		return err
+	}
 	for _, c := range courses {
-		// This check covers the case where the routine that
-		// gets the description fails to do so, If we do not
-		// skip empty descriptions it will be detected as
-		// changed and the empty value will be inserted.
-		// TODO: The function that gets description may not fail anymore.
-		if c.Description != "" {
-			rows = append(rows, c)
+		if c.Description == "" {
+			continue
+		}
+		_, err = stmt.Exec(
+			c.CRN, c.Subject, c.CourseNum, c.Type, c.Title, c.Units, pq.Array(c.Days),
+			c.Description, c.Capacity, c.Enrolled, c.Remaining, c.Year, c.TermID,
+		)
+		if err != nil {
+			stmt.Close()
+			return err
 		}
 	}
+	if err = stmt.Close(); err != nil {
+		return err
+	}
+	if err = insertNew(target, tmpTable, tx.Tx); err != nil {
+		return err
+	}
 
+	// auto_updated = 2 for generate updates
+	var q string
+	q, err = updatequery(genquery{
+		Target:     target,
+		Tmp:        tmpTable,
+		SetUpdated: true,
+		AutoUpdate: 2,
+		Vars: []string{
+			"subject",
+			"course_num",
+			"type",
+			"units",
+			"days",
+			"title",
+			"description",
+			"capacity",
+			"enrolled",
+			"remaining",
+			"year",
+			"term_id",
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(q); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func updateLectureTable(
+	db *sqlx.DB,
+	lectures []*models.Lecture,
+) (err error) {
+	var (
+		target   = "lectures"
+		tmpTable = "_tmp_" + target
+		rows     = interfaceSlice(lectures)
+	)
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
 		Isolation: sql.LevelDefault, ReadOnly: false,
 	})
 	if err != nil {
 		return err
 	}
-
 	droptmp, err := createTmpTable(target, tx, tmpTable, rows)
 	defer func() {
 		e := droptmp()
@@ -221,110 +374,7 @@ func updateCourseTable(db *sql.DB, courses []*catalog.Entry) error {
 	if err = insertNew(target, tmpTable, tx); err != nil {
 		return err
 	}
-
-	// auto_updated = 3 for enrollment count updates
 	q, err := updatequery(genquery{
-		Target:     target,
-		Tmp:        tmpTable,
-		SetUpdated: true,
-		AutoUpdate: 3,
-		Vars: []string{
-			"capacity",
-			"enrolled",
-			"remaining"},
-	})
-	if err != nil {
-		return err
-	}
-	if _, err = tx.Exec(q); err != nil {
-		return err
-	}
-
-	// auto_updated = 2 for generate updates
-	q, err = updatequery(genquery{
-		Target:     target,
-		Tmp:        tmpTable,
-		SetUpdated: true,
-		AutoUpdate: 2,
-		Vars: []string{
-			"subject",
-			"course_num",
-			"type",
-			"units",
-			"days",
-			"title",
-			"description",
-		},
-	})
-	if err != nil {
-		return err
-	}
-	if _, err = tx.Exec(q); err != nil {
-		return err
-	}
-	return err
-}
-
-func updateLectureTable(
-	db *sql.DB,
-	lectures []*models.Lecture,
-) (err error) {
-	var (
-		target   = "lectures"
-		tmpTable = "_tmp_" + target
-		rows     = make([]interface{}, len(lectures))
-	)
-	// for i, l := range lectures {
-	// 	m := map[string]interface{}{
-	// 		"crn":           l.CRN,
-	// 		"start_time":    l.StartTime.Format(TimeFormat),
-	// 		"end_time":      l.EndTime.Format(TimeFormat),
-	// 		"start_date":    l.StartDate.Format(models.DateFormat),
-	// 		"end_date":      l.EndDate.Format(models.DateFormat),
-	// 		"instructor_id": l.InstructorID,
-	// 		"auto_updated":  1,
-	// 	}
-	// 	rows[i] = m
-	// }
-	for i, l := range lectures {
-		rows[i] = l
-	}
-	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
-		Isolation: sql.LevelDefault,
-		ReadOnly:  false,
-	})
-	if err != nil {
-		return err
-	}
-	droptmp, err := createTmpTable(target, tx, tmpTable, rows)
-	defer func() {
-		e := droptmp()
-		if e != nil && err == nil {
-			err = e
-		}
-		if err == nil {
-			err = tx.Commit()
-		} else {
-			log.Println(err)
-		}
-	}()
-	if err != nil {
-		return err
-	}
-	// New lectures
-	q := fmt.Sprintf(`
-	INSERT INTO %[1]s
-	SELECT * FROM %[2]s tmp
-	WHERE NOT EXISTS (
-	  SELECT * FROM %[1]s target
-	  WHERE target.CRN = tmp.CRN
-	)`, target, tmpTable)
-	if _, err = tx.Exec(q); err != nil {
-		return err
-	}
-	// Updated lectures
-
-	q, err = updatequery(genquery{
 		Target:     target,
 		Tmp:        tmpTable,
 		SetUpdated: true,
@@ -353,23 +403,8 @@ func updateLabsTable(
 	var (
 		target   = "aux"
 		tmpTable = "_tmp_" + target
-		// rows     = make([]interface{}, len(labs))
-		rows = interfaceSlice(labs)
+		rows     = interfaceSlice(labs)
 	)
-
-	// for i, l := range labs {
-	// 	rows[i] = map[string]interface{}{
-	// 		"crn":           l.CRN,
-	// 		"course_crn":    l.CourseCRN,
-	// 		"section":       l.Section,
-	// 		"start_time":    l.StartTime,
-	// 		"end_time":      l.EndTime,
-	// 		"building_room": l.Building,
-	// 		"instructor_id": l.InstructorID,
-	// 		"auto_updated":  1,
-	// 	}
-	// }
-
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
 		Isolation: sql.LevelDefault,
 		ReadOnly:  false,
@@ -472,17 +507,7 @@ func updateExamTable(db *sql.DB, exams []*models.Exam) error {
 		target   = "exam"
 		tmpTable = "_tmp_" + target
 		rows     = interfaceSlice(exams)
-		// rows     = make([]interface{}, len(exams))
 	)
-	// for i, e := range exams {
-	// 	rows[i] = map[string]interface{}{
-	// 		"crn":        e.CRN,
-	// 		"date":       e.Date.Format(models.DateFormat),
-	// 		"start_time": e.StartTime,
-	// 		"end_time":   e.EndTime,
-	// 	}
-	// }
-
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
 		Isolation: sql.LevelDefault,
 		ReadOnly:  false,

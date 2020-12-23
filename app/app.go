@@ -24,6 +24,11 @@ type App struct {
 	jwtIdentidyKey string
 }
 
+// Close the application resourses
+func (a *App) Close() error {
+	return a.DB.Close()
+}
+
 // CreateUser stores a user in the database and sets its private variables
 func (a *App) CreateUser(u *users.User, password string) (*users.User, error) {
 	return u, users.Create(a.DB, u, password)

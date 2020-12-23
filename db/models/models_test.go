@@ -19,12 +19,14 @@ func TestCSVRow(t *testing.T) {
 	if row[0] != "123456" {
 		t.Errorf("bad crn: %v", row[0])
 	}
-	if row[1] != now.Format(DateFormat) {
-		t.Errorf("bad time string: got %v, want %v", row[1], now.String())
-	}
-	if row[2] != now.Format(TimeFormat) {
-		t.Errorf("bad time string: got %v, want %v", row[1], now.Format(TimeFormat))
-	}
+	/*
+		if row[1] != now.Format(DateFormat) {
+			t.Errorf("bad time string: got %v, want %v", row[1], now.String())
+		}
+		if row[2] != now.Format(TimeFormat) {
+			t.Errorf("bad time string: got %v, want %v", row[1], now.Format(TimeFormat))
+		}
+	*/
 
 	l := catalog.Entry{
 		CRN:       12345,

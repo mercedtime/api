@@ -2,13 +2,11 @@ package app
 
 import (
 	"database/sql"
-	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
-	"github.com/mercedtime/api/db/models"
 )
 
 // RegisterRoutes will setup all the app routes
@@ -177,22 +175,15 @@ var (
 	defaultOffset interface{} = 0 // default to 0
 )
 
-func getFromCRN(db *sqlx.DB, query string, v interface{ Scan(models.Scanable) error }) gin.HandlerFunc {
+func getFromCRN(db *sqlx.DB, query string, v interface{}) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var (
-			crn = c.GetInt("crn")
-			row = db.QueryRow(query, crn)
-			err = v.Scan(row)
-		)
+		err := db.Get(v, query, c.GetInt("crn"))
 		if err == sql.ErrNoRows {
-			c.JSON(404, &Error{
-				Msg:    fmt.Sprintf("no results found for crn: %d", crn),
-				Status: 404,
-			})
+			c.JSON(404, &Error{"could not find exam", 404})
 			return
 		}
 		if err != nil {
-			senderr(c, err, 500)
+			c.JSON(500, Error{err.Error(), 500})
 			return
 		}
 		c.JSON(200, v)

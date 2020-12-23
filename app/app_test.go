@@ -18,10 +18,18 @@ import (
 )
 
 func Test(t *testing.T) {
+	// a := testApp(t)
+	// defer a.Close()
+	// stmt, err := a.DB.PrepareNamed(pq.CopyIn("testing", "a", "b", "c"))
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	// fmt.Println(pq.CopyIn("testing", "a", "b", "c"))
 }
 
 func TestArr(t *testing.T) {
 	// a := testApp(t)
+	// defer a.Close()
 	// res := make([]map[string]interface{}, 0, 3)
 	// row := a.DB.DB.QueryRow(`select '{{"one":1},{"two":2}}'::json[]`)
 	// err := row.Scan(pq.Array(&res))
@@ -58,6 +66,7 @@ func testApp(t *testing.T) *App {
 
 func TestListEndpoints(t *testing.T) {
 	app := testApp(t)
+	defer app.Close()
 	for _, tst := range []struct {
 		Path          string
 		Limit, Offset int
@@ -130,6 +139,7 @@ func TestLectureRoutes(t *testing.T) {
 		crn int
 		app = testApp(t)
 	)
+	defer app.Close()
 	// get a testing crn that has an exam
 	row := app.DB.QueryRow(`
 		select l.crn from lectures l, exam e
@@ -172,6 +182,7 @@ func TestInstructorRoutes(t *testing.T) {
 		id  int
 		app = testApp(t)
 	)
+	defer app.Close()
 	row := app.DB.QueryRow(`
 		select id from instructor
 		order by random() limit 1`) // get a random crn
@@ -212,6 +223,7 @@ func TestInstructorRoutes(t *testing.T) {
 func TestPostUser(t *testing.T) {
 	a := testApp(t)
 	ts := httptest.NewServer(a.Engine)
+	defer a.Close()
 	defer ts.Close()
 	resp, err := ts.Client().Post(ts.URL+"/user", "application/json", strings.NewReader(`
 		{"name":"testuser"}`))
@@ -290,6 +302,7 @@ func TestListEndpointsServer(t *testing.T) {
 func TestLecture(t *testing.T) {
 	app := testApp(t)
 	ts := httptest.NewServer(app.Engine)
+	defer app.Close()
 	defer ts.Close()
 	resp, err := ts.Client().Get(ts.URL + "/lectures?limit=30&offset=30&subject=cse")
 	if err != nil {

@@ -18,8 +18,10 @@ type Entry struct {
 	Title     string `db:"title" json:"title"`
 
 	Units int `db:"units" json:"units" csv:"units"`
-	// Days        Weekdays `db:"days" json:"days" csv:"days"`
-	Days        string `db:"days" json:"days" csv:"days"`
+
+	Days Weekdays `db:"days" json:"days" csv:"days" goqu:"skipinsert"`
+	// Days string   `db:"days" json:"days" csv:"days"`
+
 	Description string `db:"description" json:"description"`
 	Capacity    int    `db:"capacity" json:"capacity"`
 	Enrolled    int    `db:"enrolled" json:"enrolled"`

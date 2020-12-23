@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/gin-gonic/gin"
@@ -42,7 +43,13 @@ func listParamsMiddleware(c *gin.Context) {
 
 // SubCourseList is a list of SubCourses that maintains
 // interoperability with postgresql json blobs.
-type SubCourseList []models.SubCourse
+type SubCourseList []struct {
+	models.SubCourse
+
+	Enrolled        int              `db:"enrolled" json:"enrolled"`
+	Days            catalog.Weekdays `db:"days" json:"days"`
+	CourseUpdatedAt time.Time        `db:"course_updated_at" json:"course_updated_at"`
+}
 
 // Scan will convert the list of subcourses from json
 // to a serialized struct slice.
@@ -65,18 +72,22 @@ LEFT OUTER JOIN
       SELECT
         course_crn,
         array_agg(json_build_object(
-          'crn', crn,
-          'course_crn', course_crn,
-          'section', section,
-          -- 'start_time', start_time,
-          -- 'end_time', end_time,
-          'building_room', building_room,
-          'instructor_id', instructor_id
-          -- ,'updated_at', updated_at
-        )) AS sub
+		  'crn', aux.crn,
+		  'course_crn', aux.course_crn,
+		  'section', aux.section,
+		  'days', course.days,
+		  'enrolled', course.enrolled,
+		  'start_time', aux.start_time,
+		  'end_time', aux.end_time,
+		  'building_room', aux.building_room,
+		  'instructor_id', aux.instructor_id,
+		  'updated_at', aux.updated_at,
+		  'course_updated_at', course.updated_at
+		)) AS sub
 	    FROM aux
+		JOIN course ON aux.crn = course.crn
 	   WHERE aux.course_crn != 0
-    GROUP BY aux.course_crn
+	GROUP BY aux.course_crn
   ) a
 ON c.crn = a.course_crn
 WHERE c.crn IN (SELECT crn FROM exam)`
@@ -131,6 +142,8 @@ WHERE c.crn IN (SELECT crn FROM exam)`
 		c.JSON(200, result)
 	}
 }
+
+var listCoursesQuery = `select * from course `
 
 func (a *App) listCourses(c *gin.Context) {
 	var (

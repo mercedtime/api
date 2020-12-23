@@ -35,8 +35,26 @@ func (d *Date) String() string {
 // Time is an alias for time.Time
 type Time time.Time
 
+const timeFormat = "15:04:05"
+
 func (t *Time) String() string {
-	return time.Time(*t).Format("15:04:05")
+	return time.Time(*t).Format(timeFormat)
+}
+
+// MarshalJSON implements the json.Marshaler interface
+func (t Time) MarshalJSON() ([]byte, error) {
+	str := time.Time(t).Format(timeFormat)
+	return []byte(str), nil
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface
+func (t *Time) UnmarshalJSON(b []byte) error {
+	tm, err := time.Parse(timeFormat, string(b))
+	if err != nil {
+		return err
+	}
+	*t = Time(tm)
+	return nil
 }
 
 // Default date and time formats
@@ -97,98 +115,4 @@ type SubCourse struct {
 
 	UpdatedAt   time.Time `db:"updated_at" json:"updated_at" csv:"-" goqu:"skipupdate,skipinsert"`
 	AutoUpdated int       `db:"auto_updated" json:"-" csv:"-"`
-}
-
-// Scan helper
-// SELECT crn,course_num,title,units,activity,days,start_time,end_time,start_date,end_date,instructor_id
-func (l *Lecture) Scan(sc Scanable) error {
-	var (
-		stime, etime string
-		sdate, edate string
-	)
-	err := sc.Scan(
-		&l.CRN,
-		&stime,
-		&etime,
-		&sdate,
-		&edate,
-		&l.InstructorID,
-		&l.AutoUpdated,
-	)
-	if err != nil {
-		return err
-	}
-
-	l.StartTime, err = time.Parse(DateFormat, stime)
-	if err != nil {
-		return err
-	}
-	l.EndTime, err = time.Parse(DateFormat, etime)
-	if err != nil {
-		return err
-	}
-	l.StartDate, err = time.Parse(DateFormat, sdate)
-	if err != nil {
-		return err
-	}
-	l.EndDate, err = time.Parse(DateFormat, edate)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// Scan helper function
-func (e *Exam) Scan(sc Scanable) error {
-	var (
-		date, startTime, endTime string
-	)
-	err := sc.Scan(&e.CRN, &date, &startTime, &endTime)
-	if err != nil {
-		return err
-	}
-	e.Date, err = time.Parse(DateFormat, date)
-	if err != nil {
-		return err
-	}
-	e.StartTime, err = time.Parse(DateFormat, startTime)
-	if err != nil {
-		return err
-	}
-	e.EndTime, err = time.Parse(DateFormat, endTime)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// Scan helper
-// SELECT crn,course_num,title,units,activity,days,start_time,end_time,start_date,end_date,instructor_id
-func (l *LabDisc) Scan(sc Scanable) error {
-	var stime, etime string
-	err := sc.Scan(
-		&l.CRN,
-		&l.CourseCRN,
-		&l.Section,
-		// &l.Units,
-		// &l.Days,
-		&stime,
-		&etime,
-		&l.Building,
-		&l.InstructorID,
-		&l.AutoUpdated,
-	)
-	if err != nil {
-		return err
-	}
-
-	l.StartTime, err = time.Parse(DateFormat, stime)
-	if err != nil {
-		return err
-	}
-	l.EndTime, err = time.Parse(DateFormat, etime)
-	if err != nil {
-		return err
-	}
-	return nil
 }

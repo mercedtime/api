@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"flag"
 	"fmt"
 	"hash/fnv"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/harrybrwn/config"
 	"github.com/harrybrwn/edu/school/ucmerced/ucm"
+	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 	"github.com/mercedtime/api/app"
@@ -102,13 +102,13 @@ func main() {
 	}
 
 	if enrollmentOnly {
-		db, err := opendb(conf)
+		db, err := sqlx.Connect("postgres", conf.Database.GetDSN())
 		if err != nil {
 			log.Fatal(err)
 		}
 		defer db.Close()
 		err = recordHistoricalEnrollment(
-			db, conf.Year, termcodeMap[conf.Term], sch.Ordered())
+			db.DB, conf.Year, termcodeMap[conf.Term], sch.Ordered())
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -123,7 +123,7 @@ func main() {
 
 	defer fmt.Println()
 	if dbOpsOnly {
-		db, err := opendb(conf)
+		db, err := sqlx.Connect("postgres", conf.Database.GetDSN())
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -133,7 +133,7 @@ func main() {
 		}
 		if !noEnrollment {
 			err = recordHistoricalEnrollment(
-				db, conf.Year, termcodeMap[conf.Term],
+				db.DB, conf.Year, termcodeMap[conf.Term],
 				sch.Ordered(),
 			)
 			if err != nil {
@@ -149,18 +149,6 @@ func main() {
 		}
 		fmt.Print("csv files written ")
 	}
-}
-
-func opendb(conf updateConfig) (*sql.DB, error) {
-	db, err := sql.Open("postgres", conf.Database.GetDSN())
-	if err != nil {
-		return nil, err
-	}
-	if err = db.Ping(); err != nil {
-		db.Close()
-		return nil, err
-	}
-	return db, nil
 }
 
 type tables struct {
@@ -219,14 +207,14 @@ func getTablesData(sch ucm.Schedule, conf *updateConfig) (*tables, error) {
 	return tab, nil
 }
 
-func updates(w io.Writer, db *sql.DB, tab *tables) (err error) {
+func updates(w io.Writer, db *sqlx.DB, tab *tables) (err error) {
 	t := time.Now()
 	fmt.Fprintf(w, "[%s] ", t.Format(time.Stamp))
 	t = time.Now()
 
 	fmt.Fprintf(w, "%v ", time.Now().Sub(t))
 	fmt.Fprintf(w, "instructor:")
-	err = updateInstructorsTable(db, tab.instructorMap)
+	err = updateInstructorsTable(db.DB, tab.instructorMap)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -253,7 +241,7 @@ func updates(w io.Writer, db *sql.DB, tab *tables) (err error) {
 	fmt.Fprintf(w, "%v ok|labs:", time.Now().Sub(t))
 	t = time.Now()
 
-	err = updateLabsTable(db, tab.aux)
+	err = updateLabsTable(db.DB, tab.aux)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -261,7 +249,7 @@ func updates(w io.Writer, db *sql.DB, tab *tables) (err error) {
 	fmt.Fprintf(w, "%v ok|exams:", time.Now().Sub(t))
 	t = time.Now()
 
-	err = updateExamTable(db, tab.exam)
+	err = updateExamTable(db.DB, tab.exam)
 	if err != nil {
 		log.Println("Error update exam table:", err)
 		return err
@@ -527,8 +515,10 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Entry, error
 					Type:      c.Activity,
 					Title:     cleanTitle(c.Title),
 					Units:     c.Units,
-					Days:      daysString(c.Days),
-					// Days:        catalog.NewWeekdays(c.Days),
+
+					// Days:      daysString(c.Days),
+					Days: catalog.NewWeekdays(c.Days),
+
 					Description: info,
 					Capacity:    c.Capacity,
 					Enrolled:    c.Enrolled,
