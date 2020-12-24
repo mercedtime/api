@@ -63,7 +63,7 @@ CREATE TABLE course (
     remaining   INTEGER,
 
     updated_at   TIMESTAMPTZ DEFAULT now(),
-    auto_updated INTEGER DEFAULT 0,
+    -- auto_updated INTEGER DEFAULT 0,
     year         INT NOT NULL,
     term_id      INT NOT NULL,
 
@@ -81,9 +81,7 @@ CREATE TABLE lectures (
     start_date    DATE,
     end_date      DATE,
     instructor_id BIGINT, -- move to catalog
-
     updated_at   TIMESTAMPTZ DEFAULT now(),
-    auto_updated INTEGER     DEFAULT 0,
 
     FOREIGN KEY (instructor_id) REFERENCES instructor(id),
     PRIMARY KEY (crn),
@@ -101,9 +99,7 @@ CREATE TABLE aux (
     end_time      TIMESTAMPTZ,
     building_room TEXT,
     instructor_id BIGINT, -- move to catalog
-
     updated_at   TIMESTAMPTZ DEFAULT now(),
-    auto_updated INTEGER DEFAULT 0,
 
     FOREIGN KEY (instructor_id) REFERENCES instructor (id),
     PRIMARY KEY (crn),
@@ -130,8 +126,6 @@ CREATE TABLE enrollment (
     ts TIMESTAMPTZ DEFAULT now(),
     enrolled INT,
     capacity INT
-
-    -- FOREIGN KEY (crn) REFERENCES course(crn)
 );
 
 CREATE TABLE users (
@@ -164,47 +158,26 @@ CREATE VIEW counts AS
   SELECT 'prerequisites' AS name, COUNT(*) FROM prerequisites;
 
 
-CREATE VIEW auto_updated AS
-SELECT
-    c.crn,
-    c.subject,
-    c.course_num,
-    c.type,
-
-    c.auto_updated as course_updated,
-    c.updated_at as course_updated_at,
-    l.auto_updated as lecture_updated,
-    l.updated_at as lecture_updated_at
-FROM
-    course c,
-    lectures l
-WHERE
-    c.crn = l.crn AND
-    (
-        c.auto_updated != 0 OR
-        l.auto_updated != 0
-    );
-
 CREATE VIEW course_small AS
-  SELECT id,
-         crn,
-         subject,
-         course_num,
-         type,
-         units,
-         left(title, 30),
-         enrolled,
-         capacity,
-         year,
-         term_id
-    FROM course;
+SELECT id,
+       crn,
+       subject,
+       course_num,
+       type,
+       units,
+       left(title, 30),
+       enrolled,
+       capacity,
+       year,
+       term_id
+  FROM course;
 
 -- course update times and count newest first
 CREATE VIEW course_updates AS
-      SELECT updated_at, count(*)
-        FROM course
-    GROUP BY updated_at
-    ORDER BY updated_at DESC;
+     SELECT updated_at, count(*)
+       FROM course
+   GROUP BY updated_at
+   ORDER BY updated_at DESC;
 
 -- Enrollment data dumps by date newest first
 CREATE VIEW enrollment_updates AS
@@ -236,7 +209,7 @@ LEFT OUTER JOIN (
           UNION
          SELECT crn, start_time, end_time, instructor_id
            FROM lectures
-       ) l ON c.crn = l.crn
+       ) l   ON c.crn = l.crn
 LEFT OUTER JOIN instructor i ON i.id = l.instructor_id
           WHERE c.year = 2021
        ORDER BY c.subject ASC,
@@ -244,11 +217,11 @@ LEFT OUTER JOIN instructor i ON i.id = l.instructor_id
                 c.type DESC;
 
 
-CREATE VIEW catalog_all AS
+CREATE VIEW catalog AS
      SELECT c.*, array_to_json(sub) AS subcourse
        FROM course c
  LEFT OUTER JOIN (
-     SELECT array_agg(join_build_object(
+     SELECT array_agg(json_build_object(
 		    'crn',               aux.crn,
 		    'course_crn',        aux.course_crn,
 		    'section',           aux.section,
@@ -260,11 +233,11 @@ CREATE VIEW catalog_all AS
 		    'instructor_id',     aux.instructor_id,
 		    'updated_at',        aux.updated_at,
 		    'course_updated_at', course.updated_at
-     )) AS sub, course_crn
-      FROM aux
-      JOIN course ON aux.crn = course.crn
-     WHERE aux.course_crn != 0
-  GROUP BY aux.course_crn
+      )) AS sub, course_crn
+       FROM aux
+       JOIN course ON aux.crn = course.crn
+      WHERE aux.course_crn != 0
+   GROUP BY aux.course_crn
 ) a
-        ON c.crn = a.course_crn
-     WHERE c.crn IN (SELECT crn FROM exam);
+         ON c.crn = a.course_crn
+      WHERE c.crn IN (SELECT crn FROM exam);

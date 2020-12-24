@@ -27,28 +27,18 @@ func Test(t *testing.T) {
 	// fmt.Println(pq.CopyIn("testing", "a", "b", "c"))
 }
 
-func TestArr(t *testing.T) {
-	// a := testApp(t)
-	// defer a.Close()
-	// res := make([]map[string]interface{}, 0, 3)
-	// row := a.DB.DB.QueryRow(`select '{{"one":1},{"two":2}}'::json[]`)
-	// err := row.Scan(pq.Array(&res))
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
-	// fmt.Println(res)
-}
-
 func testConfig() *Config {
-	conf := &Config{}
-	conf.Database.Driver = "postgres"
-	conf.Database.Host = "localhost"
-	conf.Database.Port = 25432
-	conf.Database.User = env("POSTGRES_USER", "mt")
-	conf.Database.Password = env("POSTGRES_PASSWORD", "test")
-	conf.Database.Name = env("POSTGRES_DB", "mercedtime")
-	conf.Database.SSL = "disable"
-	return conf
+	return &Config{
+		Database: DatabaseConfig{
+			Driver:   "postgres",
+			Host:     "localhost",
+			Port:     25432,
+			User:     env("POSTGRES_USER", "mt"),
+			Password: env("POSTGRES_PASSWORD", "test"),
+			Name:     env("POSTGRES_DB", "mercedtime"),
+			SSL:      "disable",
+		},
+	}
 }
 
 func testApp(t *testing.T) *App {

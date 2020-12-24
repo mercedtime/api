@@ -41,14 +41,15 @@ type updateConfig struct {
 	Year     int                `config:"year"`
 	Term     string             `config:"term"`
 
+	SkipCourses bool `config:"skipcourses"`
+
 	Logfile string `config:"logfile" default:"mtupdate.log"`
 }
 
 func main() {
 	var (
-		dbOpsOnly = false
-		csvOps    = false
-
+		dbOpsOnly      = false
+		csvOps         = false
 		noEnrollment   = false
 		enrollmentOnly = false
 
@@ -58,8 +59,9 @@ func main() {
 				User:   "mt",
 				Name:   "mercedtime",
 			},
-			Year: 2021,
-			Term: "spring",
+			Year:        2021,
+			Term:        "spring",
+			SkipCourses: false,
 		}
 	)
 
@@ -82,6 +84,7 @@ func main() {
 
 	flag.IntVar(&conf.Year, "year", conf.Year, "the year")
 	flag.StringVar(&conf.Term, "term", conf.Term, "the term")
+	// flag.BoolVar(&conf.SkipCourses, "skip-courses", conf.SkipCourses, "skip the courses update")
 	flag.Parse()
 
 	if !dbOpsOnly && !csvOps && !enrollmentOnly {
@@ -161,20 +164,16 @@ type tables struct {
 
 // TODO try to squash some of these helper functions into one loop
 func getTablesData(sch ucm.Schedule, conf *updateConfig) (*tables, error) {
-	// t1, t2 := time.Now(), time.Now()
-	report := func(name ...string) {
-		// t2 = time.Now()
-		// fmt.Println(name, t2.Sub(t1))
-		// t1 = t2
-	}
 	var (
 		courses = sch.Ordered()
-		err     error
 		tab     = &tables{
-			instructorMap: getInstructors(courses),
+			instructorMap: make(map[string]*instructorMeta),
+			exam:          make([]*models.Exam, 0, 128), // 128 is arbitrary
 		}
+		hash = fnv.New32a()
+		err  error
 	)
-	report("instructors")
+
 	tab.course, err = GetCourseTable(courses, 150)
 	if err != nil {
 		return nil, err
@@ -183,28 +182,38 @@ func getTablesData(sch ucm.Schedule, conf *updateConfig) (*tables, error) {
 		tab.course[i].Year = conf.Year
 		tab.course[i].TermID = termcodeMap[conf.Term]
 	}
-	report("courses")
-	tab.lectures, err = getLectures(courses, tab.instructorMap)
-	if err != nil {
-		return nil, err
-	}
-	report("lectures")
-	tab.aux = getLabsTable(courses, sch, tab.instructorMap)
-	report("labs")
-	tab.exam = make([]*models.Exam, 0, len(tab.lectures))
+
 	for _, c := range courses {
-		if c.Exam == nil {
-			continue
+		// Postgres does not allow a timestamp with a year of 0000
+		if c.Time.Start.Year() == 0 {
+			c.Time.Start = c.Time.Start.AddDate(1, 0, 0)
 		}
-		tab.exam = append(tab.exam, &models.Exam{
-			CRN:       c.CRN,
-			Date:      c.Exam.Date,
-			StartTime: c.Time.Start,
-			EndTime:   c.Time.End,
-		})
+		if c.Time.End.Year() == 0 {
+			c.Time.End = c.Time.End.AddDate(1, 0, 0)
+		}
+		_, ok := tab.instructorMap[c.Instructor]
+		if !ok {
+			if _, err := hash.Write([]byte(c.Instructor)); err != nil {
+				return nil, err
+			}
+			tab.instructorMap[c.Instructor] = &instructorMeta{
+				name:     c.Instructor,
+				ncourses: 1,
+				id:       int64(hash.Sum32()),
+				crns:     []int{c.CRN},
+			}
+			hash.Reset()
+		}
+		if c.Exam != nil {
+			tab.exam = append(tab.exam, &models.Exam{
+				CRN:       c.CRN,
+				Date:      c.Exam.Date,
+				StartTime: c.Time.Start,
+				EndTime:   c.Time.End,
+			})
+		}
 	}
-	report("exams")
-	return tab, nil
+	return tab, tab.populate(courses, sch)
 }
 
 func updates(w io.Writer, db *sqlx.DB, tab *tables) (err error) {
@@ -298,9 +307,10 @@ func max(a, b int) int {
 	return b
 }
 
-func getInstructors(crs []*ucm.Course) map[string]*instructorMeta {
+// depricated for getTablesData
+// TODO: remove this
+func getInstructors(crs []*ucm.Course) (map[string]*instructorMeta, error) {
 	var (
-		i           = 1
 		instructors = make(map[string]*instructorMeta)
 	)
 	hash := fnv.New32a()
@@ -309,108 +319,72 @@ func getInstructors(crs []*ucm.Course) map[string]*instructorMeta {
 		if ok {
 			inst.ncourses++
 			inst.crns = append(inst.crns, c.CRN)
-			continue
+		} else {
+			_, err := hash.Write([]byte(c.Instructor))
+			if err != nil {
+				return nil, err
+			}
+			inst = &instructorMeta{
+				name:     c.Instructor,
+				ncourses: 1,
+				id:       int64(hash.Sum32()),
+			}
+			inst.crns = append(inst.crns, c.CRN)
+			instructors[c.Instructor] = inst
+			hash.Reset()
 		}
-		_, err := hash.Write([]byte(c.Instructor))
-		if err != nil {
-			panic(err) // TODO FIX THIS ASAP
-		}
-		inst = &instructorMeta{
-			name:     c.Instructor,
-			ncourses: 1,
-			id:       int64(hash.Sum32()),
-		}
-		inst.crns = append(inst.crns, c.CRN)
-		instructors[c.Instructor] = inst
-		i++
-		hash.Reset()
 	}
-	return instructors
+	return instructors, nil
 }
 
-func getLectures(courses []*ucm.Course, instructors map[string]*instructorMeta) ([]*models.Lecture, error) {
-	var (
-		list     = make([]*models.Lecture, 0, len(courses))
-		lectures = make(map[int]*ucm.Course, len(courses))
-	)
-
+func (t *tables) populate(courses []*ucm.Course, sch ucm.Schedule) error {
+	var dup = make(map[int]struct{})
 	for _, c := range courses {
-		if c.Activity != models.Lect {
-			continue
+		if c.Time.Start.Year() == 0 {
+			c.Time.Start = c.Time.Start.AddDate(1, 0, 0)
 		}
-		if _, ok := lectures[c.CRN]; ok {
-			return nil, errors.New("lectures: tried to put a duplicate crn in lectures table")
+		if c.Time.End.Year() == 0 {
+			c.Time.End = c.Time.End.AddDate(1, 0, 0)
 		}
-		lectures[c.CRN] = c
 		instructorID := int64(0)
-		instructor, ok := instructors[c.Instructor]
+		instructor, ok := t.instructorMap[c.Instructor]
 		if !ok {
-			return nil, errors.New("could not find an instructor")
+			return errors.New("could not find an instructor")
 		}
 		instructorID = instructor.id
-		// For type safety and so i get error messages
-		// when the schema changes
 
-		if c.Time.Start.Year() == 0 {
-			c.Time.Start = c.Time.Start.AddDate(1, 0, 0)
+		if _, ok := dup[c.CRN]; ok {
+			return errors.New("table.populate: tried to put duplicate crn in db")
 		}
-		if c.Time.End.Year() == 0 {
-			c.Time.End = c.Time.End.AddDate(1, 0, 0)
-		}
-		list = append(list, &models.Lecture{
-			CRN:          c.CRN,
-			StartTime:    c.Time.Start,
-			EndTime:      c.Time.End,
-			StartDate:    c.Date.Start,
-			EndDate:      c.Date.End,
-			InstructorID: instructorID,
-		})
-	}
-	return list, nil
-}
+		dup[c.CRN] = struct{}{}
 
-func getLabsTable(
-	courses []*ucm.Course,
-	sch ucm.Schedule,
-	instructors map[string]*instructorMeta,
-) []*models.LabDisc {
-	var labs = make([]*models.LabDisc, 0, len(courses))
-	for _, c := range sch.Ordered() {
 		if ucm.CourseType(c.Activity) == ucm.Lecture {
-			continue
-		}
-		var lectCRN int
-		lect, err := getDiscussionLecture(c, sch)
-		if err == nil {
-			lectCRN = lect.CRN
+			t.lectures = append(t.lectures, &models.Lecture{
+				CRN:          c.CRN,
+				StartTime:    c.Time.Start,
+				EndTime:      c.Time.End,
+				StartDate:    c.Date.Start,
+				EndDate:      c.Date.End,
+				InstructorID: instructorID,
+			})
 		} else {
-			lectCRN = 0
+			var lectCRN int = 0
+			lect, err := getDiscussionLecture(c, sch)
+			if err == nil {
+				lectCRN = lect.CRN
+			}
+			t.aux = append(t.aux, &models.LabDisc{
+				CRN:          c.CRN,
+				CourseCRN:    lectCRN,
+				Section:      c.Section,
+				StartTime:    c.Time.Start,
+				EndTime:      c.Time.End,
+				Building:     c.BuildingRoom,
+				InstructorID: instructorID,
+			})
 		}
-		instructorID := int64(0)
-		instructor, ok := instructors[c.Instructor]
-		if !ok {
-			fmt.Println("Could not find instructor")
-		} else {
-			instructorID = instructor.id
-		}
-
-		if c.Time.Start.Year() == 0 {
-			c.Time.Start = c.Time.Start.AddDate(1, 0, 0)
-		}
-		if c.Time.End.Year() == 0 {
-			c.Time.End = c.Time.End.AddDate(1, 0, 0)
-		}
-		labs = append(labs, &models.LabDisc{
-			CRN:          c.CRN,
-			CourseCRN:    lectCRN,
-			Section:      c.Section,
-			StartTime:    c.Time.Start,
-			EndTime:      c.Time.End,
-			Building:     c.BuildingRoom,
-			InstructorID: instructorID,
-		})
 	}
-	return labs
+	return nil
 }
 
 // GetDiscussionLecture will return the lecture for a given discussion.
@@ -427,7 +401,6 @@ func getDiscussionLecture(disc *ucm.Course, sch ucm.Schedule) (*ucm.Course, erro
 			i++
 			continue // these are the same
 		}
-
 		// if the current lecture has the same subject
 		// and course code then we loop until we find
 		// another lecture and if we find the discussion
@@ -506,6 +479,7 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Entry, error
 					log.Println("could not get course description:", err)
 					log.Printf("setting description as \"%s\"\n", info)
 					errs <- err
+					continue
 				}
 				crs := catalog.Entry{
 					CRN:       c.CRN,
@@ -514,7 +488,6 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Entry, error
 					Type:      c.Activity,
 					Title:     cleanTitle(c.Title),
 					Units:     c.Units,
-
 					// Days:      daysString(c.Days),
 					Days: catalog.NewWeekdays(c.Days),
 
@@ -522,7 +495,6 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Entry, error
 					Capacity:    c.Capacity,
 					Enrolled:    c.Enrolled,
 					Remaining:   c.SeatsOpen(),
-					AutoUpdated: 0,
 				}
 				innerRes = append(innerRes, &crs)
 			}

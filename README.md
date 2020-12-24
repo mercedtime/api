@@ -35,6 +35,7 @@
 - To control which year and term for which the data is returned, write a
   "State" struct that contains this global route state to be accessed globally
   be the api. (maybe make a new internal package routes with "routes.State")
+- GraphQL!!!
 
 # TODO: Thinking Shit
 

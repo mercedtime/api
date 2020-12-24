@@ -140,37 +140,64 @@ func (sc *subCourseList) Scan(val interface{}) error {
 func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 	var (
 		// TODO fix time parsing so I can un-comment out the following SQL
-		catalogQuery = `
-SELECT c.*, array_to_json(sub) AS subcourses
-FROM course c
-LEFT OUTER JOIN (
-	SELECT
-		course_crn,
-		array_agg(json_build_object(
-			'crn', aux.crn,
-			'course_crn', aux.course_crn,
-			'section', aux.section,
-			'days', course.days,
-			'enrolled', course.enrolled,
-			'start_time', aux.start_time,
-			'end_time', aux.end_time,
-			'building_room', aux.building_room,
-			'instructor_id', aux.instructor_id,
-			'updated_at', aux.updated_at,
-			'course_updated_at', course.updated_at
-		)) AS sub
-		 FROM aux
-		 JOIN course ON aux.crn = course.crn
-	    WHERE aux.course_crn != 0
-	 GROUP BY aux.course_crn
-  ) a
-           ON c.crn = a.course_crn
-		WHERE c.crn IN (SELECT crn FROM exam)`
+		// 		catalogQuery = `
+		// SELECT c.*, array_to_json(sub) AS subcourses
+		// FROM course c
+		// LEFT OUTER JOIN (
+		// 	SELECT
+		// 		course_crn,
+		// 		array_agg(json_build_object(
+		// 			'crn', aux.crn,
+		// 			'course_crn', aux.course_crn,
+		// 			'section', aux.section,
+		// 			'days', course.days,
+		// 			'enrolled', course.enrolled,
+		// 			'start_time', aux.start_time,
+		// 			'end_time', aux.end_time,
+		// 			'building_room', aux.building_room,
+		// 			'instructor_id', aux.instructor_id,
+		// 			'updated_at', aux.updated_at,
+		// 			'course_updated_at', course.updated_at
+		// 		)) AS sub
+		// 		 FROM aux
+		// 		 JOIN course ON aux.crn = course.crn
+		// 	    WHERE aux.course_crn != 0
+		// 	 GROUP BY aux.course_crn
+		//   ) a
+		//            ON c.crn = a.course_crn
+		// 		WHERE c.crn IN (SELECT crn FROM exam)`
+
+		catalogQuery = `SELECT c.*, array_to_json(sub) AS subcourse
+       FROM course c
+ LEFT OUTER JOIN (
+     SELECT array_agg(json_build_object(
+		    'crn',               aux.crn,
+		    'course_crn',        aux.course_crn,
+		    'section',           aux.section,
+		    'days',              course.days,
+		    'enrolled',          course.enrolled,
+		    'start_time',        aux.start_time,
+		    'end_time',          aux.end_time,
+		    'building_room',     aux.building_room,
+		    'instructor_id',     aux.instructor_id,
+		    'updated_at',        aux.updated_at,
+		    'course_updated_at', course.updated_at
+      )) AS sub, course_crn
+       FROM aux
+       JOIN course ON aux.crn = course.crn
+      WHERE aux.course_crn != 0
+   GROUP BY aux.course_crn
+) a
+         ON c.crn = a.course_crn
+      WHERE c.crn IN (SELECT crn FROM exam);`
+
 		addons = map[string]string{
 			"year": " AND c.year = $%d",
 			"term": " AND c.term_id = $%d",
 		}
 	)
+	// using a view for this query
+	catalogQuery = "SELECT * FROM catalog"
 	type response struct {
 		catalog.Entry
 		Subcourses subCourseList `db:"subcourses" json:"subcourses"`

@@ -79,7 +79,6 @@ type PrimaryCourse struct {
 	EndDate      time.Time `db:"end_date" csv:"end_date" json:"end_date"`
 	InstructorID int64     `db:"instructor_id" csv:"instructor_id" json:"instructor_id"`
 	LastUpdated  time.Time `db:"updated_at" json:"updated_at" csv:"-" goqu:"skipupdate,skipinsert"`
-	AutoUpdated  int       `db:"auto_updated" json:"-" csv:"-"`
 }
 
 // Exam is an exam
@@ -105,14 +104,12 @@ type LabDisc = SubCourse
 // along side some other main course
 type SubCourse struct {
 	CRN int `db:"crn" json:"crn"`
-	// TODO change this to LectureCRN => lecture_crn
+	// TODO: change this to LectureCRN => lecture_crn
 	CourseCRN    int       `db:"course_crn" json:"course_crn"`
 	Section      string    `db:"section" json:"section"`
 	StartTime    time.Time `db:"start_time" json:"start_time,omitempty"`
 	EndTime      time.Time `db:"end_time" json:"end_time,omitempty"`
 	Building     string    `db:"building_room" json:"building_room"`
 	InstructorID int64     `db:"instructor_id" json:"instructor_id"`
-
-	UpdatedAt   time.Time `db:"updated_at" json:"updated_at" csv:"-" goqu:"skipupdate,skipinsert"`
-	AutoUpdated int       `db:"auto_updated" json:"-" csv:"-"`
+	UpdatedAt    time.Time `db:"updated_at" json:"updated_at" csv:"-" goqu:"skipupdate,skipinsert"`
 }

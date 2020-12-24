@@ -27,8 +27,8 @@ type Entry struct {
 	Enrolled    int    `db:"enrolled" json:"enrolled"`
 	Remaining   int    `db:"remaining" json:"remaining"`
 
-	UpdatedAt   time.Time `db:"updated_at" json:"updated_at" csv:"-" goqu:"skipupdate,skipinsert"`
-	AutoUpdated int       `db:"auto_updated" json:"-" csv:"-"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at" csv:"-" goqu:"skipupdate,skipinsert"`
+	// AutoUpdated int       `db:"auto_updated" json:"-" csv:"-"`
 
 	// InstructorID int    `db:"instructor_id" csv:"-"`
 	// Instructor   string `db:"instructor" csv:"-"`

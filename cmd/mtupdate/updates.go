@@ -31,15 +31,13 @@ type genquery struct {
 	Vars   []string
 
 	SetUpdated bool
-	AutoUpdate int
 }
 
 var (
 	updateTmpl = `UPDATE "{{ .Target }}"{{ $n := sub (len .Vars) 1 }}
 SET {{ range $i, $v := .Vars }}
   "{{ $v }}" = "new"."{{ $v }}"{{ if ne $i $n }},{{ end }}
-{{- end }}
-  {{- if gt .AutoUpdate 0 -}},auto_updated = {{ .AutoUpdate }}{{ end }}
+  {{- end }}
   {{- if .SetUpdated }},updated_at = now(){{ end }}
 FROM (
   SELECT * FROM "{{ .Tmp }}" tmp
@@ -349,12 +347,10 @@ func updateCourseTable(db *sqlx.DB, courses []*catalog.Entry) (err error) {
 	}
 
 	var q string
-	// auto_updated = 2 for generate updates
 	q, err = updatequery(genquery{
 		Target:     target,
 		Tmp:        tmpTable,
 		SetUpdated: true,
-		AutoUpdate: 2,
 		Vars: []string{
 			"subject",
 			"course_num",
@@ -416,7 +412,6 @@ func updateLectureTable(
 		Target:     target,
 		Tmp:        tmpTable,
 		SetUpdated: true,
-		AutoUpdate: 2,
 		Vars: []string{
 			"start_time",
 			"end_time",
@@ -474,7 +469,6 @@ func updateLabsTable(
 		Target:     target,
 		Tmp:        tmpTable,
 		SetUpdated: true,
-		AutoUpdate: 2,
 		Vars: []string{
 			"section",
 			"start_time",
