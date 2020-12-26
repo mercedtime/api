@@ -12,45 +12,30 @@ import (
 
 // Config is the application config struct
 type Config struct {
-	Host   string `config:"host" default:"0.0.0.0"`
-	Port   int64  `config:"port" default:"8080"`
-	Mode   string `config:"mode" default:"debug"`
-	Secret []byte `config:"secret" env:"JWT_SECRET"`
-
-	Database DatabaseConfig `config:"database"`
+	Host     string         `config:"host,shorthand=H,usage=server host" default:"0.0.0.0"`
+	Port     int64          `config:"port,shorthand=P,usage=server port" default:"8080"`
+	Mode     string         `config:"mode,usage=set the gin mode ('debug'|'release')" default:"debug"`
+	Secret   []byte         `config:"secret,notflag" env:"JWT_SECRET"`
+	Database DatabaseConfig `config:"db" yaml:"db"`
 }
 
 // DatabaseConfig is the part of the config struct that
 // handles database info
 type DatabaseConfig struct {
-	Driver   string `config:"driver"`
-	Host     string `config:"host" default:"localhost"`
-	Port     int    `config:"port" default:"5432" env:"POSTGRES_PORT"`
-	User     string `config:"user"`
+	Driver   string `config:"driver,usage=database driver name"`
+	Host     string `config:"host,shorthand=h" default:"localhost"`
+	Port     int    `config:"port,shorthand=p" default:"5432" env:"POSTGRES_PORT"`
+	User     string `config:"user,shorthand=U"`
 	Password string `config:"password" env:"POSTGRES_PASSWORD"`
-
 	// Database name or database filename
-	Name string `config:"name"`
+	Name string `config:"name,shorthand=d,usage=name of the database"`
 	SSL  string `config:"ssl" default:"disable"`
 }
 
 // Init sets up command line flags and parses command line args and gets config defaults
 func (c *Config) Init() error {
 	flag := pflag.NewFlagSet("api", pflag.ContinueOnError)
-
-	flag.StringVar(&c.Host, "host", c.Host, "server host address")
-	flag.Int64Var(&c.Port, "port", c.Port, "server port")
-	flag.StringVar(&c.Mode, "mode", c.Mode, "change the gin server mode '(debug|release)'")
-
-	flag.StringVar(&c.Database.Driver, "driver", c.Database.Driver, "database driver '[postgres|sqlite]'")
-	flag.StringVar(&c.Database.Host, "db-host", c.Database.Host, "database remote host")
-	flag.IntVar(&c.Database.Port, "db-port", c.Database.Port, "database remote port")
-	flag.StringVar(&c.Database.Name, "name", c.Database.Name, "database name or filename")
-
-	flag.StringVar(&c.Database.User, "user", c.Database.User, "database username")
-	flag.StringVar(&c.Database.Password, "pw", c.Database.Password, "database user password")
-	flag.StringVar(&c.Database.SSL, "db-ssl", c.Database.SSL, "toggle database ssl")
-
+	config.BindToPFlagSet(flag)
 	flag.SortFlags = false
 	switch err := flag.Parse(os.Args[1:]); err {
 	case nil:

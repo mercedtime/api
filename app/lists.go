@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/postgres" // need postgres dialect
@@ -17,87 +16,6 @@ import (
 	"github.com/mercedtime/api/catalog"
 	"github.com/mercedtime/api/db/models"
 )
-
-// PageParams are url params for api pagination
-type PageParams struct {
-	Limit  uint `form:"limit"  query:"limit"  db:"limit"`
-	Offset uint `form:"offset" query:"offset" db:"offset"`
-}
-
-func (pp *PageParams) toExpr() goqu.Ex {
-	ex := goqu.Ex{}
-	if pp.Limit != 0 {
-		ex["limit"] = pp.Limit
-	}
-	if pp.Offset != 0 {
-		ex["offset"] = pp.Offset
-	}
-	return ex
-}
-
-func (pp *PageParams) appendSelect(stmt *goqu.SelectDataset) *goqu.SelectDataset {
-	if pp.Limit != 0 {
-		stmt = stmt.Limit(pp.Limit)
-	}
-	if pp.Offset != 0 {
-		stmt = stmt.Offset(pp.Offset)
-	}
-	return stmt
-}
-
-func (pp *PageParams) asSQL(stmtIndex int) (string, []interface{}, int) {
-	var (
-		q    string
-		args = make([]interface{}, 0, 2)
-	)
-	if pp.Limit != 0 {
-		args = append(args, pp.Limit)
-		q += fmt.Sprintf(" LIMIT $%d", stmtIndex)
-		stmtIndex++
-	}
-	if pp.Offset != 0 {
-		args = append(args, pp.Offset)
-		q += fmt.Sprintf(" OFFSET $%d", stmtIndex)
-		stmtIndex++
-	}
-	return q, args, stmtIndex
-}
-
-// Expression implements the goqu.Expression interface
-func (pp *PageParams) Expression() goqu.Expression { return pp.toExpr() }
-
-// Clone implements the goqu.Expression interface
-func (pp *PageParams) Clone() goqu.Expression { return pp.toExpr() }
-
-// SemesterParams is a structure that defines
-// parameters that control which courses are returned from a query
-type SemesterParams struct {
-	Year    int    `form:"year" uri:"year" query:"year" db:"year"`
-	Term    string `form:"term" uri:"term" query:"term" db:"term_id"`
-	Subject string `form:"subject" query:"subject" db:"subject"`
-}
-
-func (sp *SemesterParams) toExpr() goqu.Ex {
-	ex := goqu.Ex{}
-	if sp.Year != 0 {
-		ex["year"] = sp.Year
-	}
-	if sp.Term != "" {
-		if id := getTermID(sp.Term); id != 0 {
-			ex["term_id"] = id
-		}
-	}
-	if sp.Subject != "" {
-		ex["subject"] = sp.Subject
-	}
-	return ex
-}
-
-// Expression implements the goqu.Expression interface
-func (sp *SemesterParams) Expression() goqu.Expression { return sp.toExpr() }
-
-// Clone implements the goqu.Expression interface
-func (sp *SemesterParams) Clone() goqu.Expression { return sp.toExpr() }
 
 func listParamsMiddleware(c *gin.Context) {
 	for _, key := range []string{"limit", "offset"} {
@@ -122,9 +40,8 @@ func listParamsMiddleware(c *gin.Context) {
 type subCourseList []struct {
 	models.SubCourse
 
-	Enrolled        int              `db:"enrolled" json:"enrolled"`
-	Days            catalog.Weekdays `db:"days" json:"days"`
-	CourseUpdatedAt time.Time        `db:"course_updated_at" json:"course_updated_at"`
+	Enrolled int              `json:"enrolled"`
+	Days     catalog.Weekdays `json:"days"`
 }
 
 // Scan will convert the list of subcourses from json
@@ -139,35 +56,7 @@ func (sc *subCourseList) Scan(val interface{}) error {
 
 func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 	var (
-		// TODO fix time parsing so I can un-comment out the following SQL
-		// 		catalogQuery = `
-		// SELECT c.*, array_to_json(sub) AS subcourses
-		// FROM course c
-		// LEFT OUTER JOIN (
-		// 	SELECT
-		// 		course_crn,
-		// 		array_agg(json_build_object(
-		// 			'crn', aux.crn,
-		// 			'course_crn', aux.course_crn,
-		// 			'section', aux.section,
-		// 			'days', course.days,
-		// 			'enrolled', course.enrolled,
-		// 			'start_time', aux.start_time,
-		// 			'end_time', aux.end_time,
-		// 			'building_room', aux.building_room,
-		// 			'instructor_id', aux.instructor_id,
-		// 			'updated_at', aux.updated_at,
-		// 			'course_updated_at', course.updated_at
-		// 		)) AS sub
-		// 		 FROM aux
-		// 		 JOIN course ON aux.crn = course.crn
-		// 	    WHERE aux.course_crn != 0
-		// 	 GROUP BY aux.course_crn
-		//   ) a
-		//            ON c.crn = a.course_crn
-		// 		WHERE c.crn IN (SELECT crn FROM exam)`
-
-		catalogQuery = `SELECT c.*, array_to_json(sub) AS subcourse
+		catalogQuery = `SELECT c.*, array_to_json(sub) AS subcourses
        FROM course c
  LEFT OUTER JOIN (
      SELECT array_agg(json_build_object(
@@ -180,8 +69,7 @@ func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 		    'end_time',          aux.end_time,
 		    'building_room',     aux.building_room,
 		    'instructor_id',     aux.instructor_id,
-		    'updated_at',        aux.updated_at,
-		    'course_updated_at', course.updated_at
+		    'updated_at',        aux.updated_at
       )) AS sub, course_crn
        FROM aux
        JOIN course ON aux.crn = course.crn
@@ -189,15 +77,16 @@ func getCatalog(db *sqlx.DB) gin.HandlerFunc {
    GROUP BY aux.course_crn
 ) a
          ON c.crn = a.course_crn
-      WHERE c.crn IN (SELECT crn FROM exam);`
+      WHERE c.crn IN (SELECT crn FROM exam)`
 
 		addons = map[string]string{
-			"year": " AND c.year = $%d",
-			"term": " AND c.term_id = $%d",
+			"year":    " AND c.year = $%d",
+			"term":    " AND c.term_id = $%d",
+			"subject": " AND c.subject = $%d",
 		}
 	)
 	// using a view for this query
-	catalogQuery = "SELECT * FROM catalog"
+	// catalogQuery = "SELECT * FROM catalog WHERE "
 	type response struct {
 		catalog.Entry
 		Subcourses subCourseList `db:"subcourses" json:"subcourses"`

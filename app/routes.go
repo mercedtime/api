@@ -23,8 +23,8 @@ func (a *App) RegisterRoutes(g *gin.RouterGroup) {
 	lists.GET("/labs", ListLabs(a.DB))
 	lists.GET("/discussions", ListDiscussions(a.DB))
 	lists.GET("/instructors", ListInstructors(a.DB))
-	g.GET("/courses", termyearQueryMiddle, a.listCourses)
-	lists.GET("/catalog/:year/:term", termyearParamMiddle, getCatalog(a.DB))
+	g.GET("/courses", termyearMiddle, a.listCourses)
+	lists.GET("/catalog/:year/:term", termyearMiddle, getCatalog(a.DB))
 
 	ugroup := g.Group("/user")
 	ugroup.POST("/", a.PostUser)
@@ -119,22 +119,27 @@ func setYear(c *gin.Context, year string) {
 	return
 }
 
-func termyearQueryMiddle(c *gin.Context) {
-	if term, ok := c.GetQuery("term"); ok {
-		setTerm(c, term)
+func termyearMiddle(c *gin.Context) {
+	var (
+		err error
+		p   = SemesterParams{}
+	)
+	if err = p.bind(c); err != nil {
+		c.AbortWithStatusJSON(400, &Error{
+			Msg:    "bad parameters: " + err.Error(),
+			Status: 400,
+		})
+		return
 	}
-	if year, ok := c.GetQuery("year"); ok {
-		setYear(c, year)
-	}
-	c.Next()
-}
 
-func termyearParamMiddle(c *gin.Context) {
-	if term, ok := c.Params.Get("term"); ok {
-		setTerm(c, term)
+	if p.Subject != "" {
+		c.Set("subject", strings.ToUpper(p.Subject))
 	}
-	if year, ok := c.Params.Get("year"); ok {
-		setYear(c, year)
+	if p.Year != 0 {
+		c.Set("year", p.Year)
+	}
+	if p.Term != "" {
+		setTerm(c, p.Term)
 	}
 	c.Next()
 }
