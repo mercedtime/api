@@ -301,25 +301,21 @@ func updateCourseTable(db *sqlx.DB, courses []*catalog.Entry) (err error) {
 		return err
 	}
 	defer func() {
-		tmp.close()
+		if e := tmp.close(); e != nil {
+			log.Println("Warning (could not delete tmp table): ", e)
+		}
 		if err == nil {
 			err = tx.Commit()
 		}
 	}()
 
 	cols := []string{
-		"crn",
-		"subject",
-		"course_num",
-		"type",
-		"title",
-		"units",
-		"days",
-		"description",
-		"capacity",
-		"enrolled",
-		"remaining",
-		"year",
+		"crn", "subject",
+		"course_num", "type",
+		"title", "units",
+		"days", "description",
+		"capacity", "enrolled",
+		"remaining", "year",
 		"term_id",
 	}
 	stmt, err := tx.Prepare(pq.CopyIn(tmpTable, cols...))
@@ -331,9 +327,9 @@ func updateCourseTable(db *sqlx.DB, courses []*catalog.Entry) (err error) {
 			continue
 		}
 		_, err = stmt.Exec(
-			c.CRN, c.Subject, c.CourseNum, c.Type, c.Title, c.Units, pq.Array(c.Days),
-			c.Description, c.Capacity, c.Enrolled, c.Remaining, c.Year, c.TermID,
-		)
+			c.CRN, c.Subject, c.CourseNum, c.Type, c.Title, c.Units,
+			pq.Array(c.Days), c.Description, c.Capacity, c.Enrolled,
+			c.Remaining, c.Year, c.TermID)
 		if err != nil {
 			stmt.Close()
 			return errors.Wrap(err, "could not insert into temp course table")
@@ -358,12 +354,9 @@ func updateCourseTable(db *sqlx.DB, courses []*catalog.Entry) (err error) {
 			"units",
 			"days",
 			"title",
-			"description",
-			"capacity",
-			"enrolled",
-			"remaining",
-			"year",
-			"term_id",
+			"description", "capacity",
+			"enrolled", "remaining",
+			"year", "term_id",
 		},
 	})
 	if err != nil {
@@ -486,18 +479,14 @@ func updateLabsTable(
 	return nil
 }
 
-func updateInstructorsTable(db *sql.DB, instructors map[string]*instructorMeta) (err error) {
+func updateInstructorsTable(table string, db *sql.DB, instructors []interface{}) (err error) {
 	var (
-		target   = "instructor"
-		tmpTable = "_tmp_" + target
-		rows     = make([]interface{}, 0, len(instructors))
+		tmpTable = "_tmp_" + table
+		// rows     = make([]interface{}, 0, len(instructors))
 	)
-	for _, inst := range instructors {
-		rows = append(rows, &models.Instructor{
-			ID:   inst.id,
-			Name: inst.name,
-		})
-	}
+	// for _, inst := range instructors {
+	// 	rows = append(rows, inst)
+	// }
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
 		Isolation: sql.LevelDefault,
 		ReadOnly:  false,
@@ -506,7 +495,7 @@ func updateInstructorsTable(db *sql.DB, instructors map[string]*instructorMeta) 
 		return err
 	}
 
-	droptmp, err := createTmpTable(target, tx, tmpTable, rows)
+	droptmp, err := createTmpTable(table, tx, tmpTable, instructors)
 	defer func() {
 		e := droptmp()
 		if e != nil && err == nil {
@@ -528,7 +517,7 @@ func updateInstructorsTable(db *sql.DB, instructors map[string]*instructorMeta) 
 	WHERE NOT EXISTS (
 	  SELECT * FROM %[1]s target
 	  WHERE target.id = tmp.id
-	)`, target, tmpTable)
+	)`, table, tmpTable)
 	if _, err = tx.Exec(q); err != nil {
 		return err
 	}
@@ -568,8 +557,7 @@ func updateExamTable(db *sql.DB, exams []*models.Exam) error {
 	}
 
 	q, err := updatequery(genquery{
-		Target:     target,
-		Tmp:        tmpTable,
+		Target: target, Tmp: tmpTable,
 		SetUpdated: false,
 		Vars:       []string{"date", "start_time", "end_time"},
 	})

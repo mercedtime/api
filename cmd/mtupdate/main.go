@@ -37,13 +37,12 @@ var termcodeMap = map[string]int{
 }
 
 type updateConfig struct {
-	Database app.DatabaseConfig `config:"database"`
+	Database app.DatabaseConfig `config:"db" yaml:"db"`
 	Year     int                `config:"year"`
 	Term     string             `config:"term"`
 
-	SkipCourses bool `config:"skipcourses"`
-
-	Logfile string `config:"logfile" default:"mtupdate.log"`
+	SkipCourses bool   `config:"skipcourses"`
+	Logfile     string `config:"logfile" default:"mtupdate.log"`
 }
 
 func main() {
@@ -147,7 +146,7 @@ func main() {
 	}
 
 	if csvOps {
-		if err = writes(conf, tab); err != nil {
+		if err = writes(tab); err != nil {
 			log.Fatal("CSV Error:", err)
 		}
 		fmt.Print("csv files written ")
@@ -155,11 +154,11 @@ func main() {
 }
 
 type tables struct {
-	course        []*catalog.Entry
-	lectures      []*models.Lecture
-	aux           []*models.LabDisc
-	exam          []*models.Exam
-	instructorMap map[string]*instructorMeta
+	course     []*catalog.Entry
+	lectures   []*models.Lecture
+	aux        []*models.LabDisc
+	exam       []*models.Exam
+	instructor map[string]*models.Instructor
 }
 
 // TODO try to squash some of these helper functions into one loop
@@ -167,11 +166,10 @@ func getTablesData(sch ucm.Schedule, conf *updateConfig) (*tables, error) {
 	var (
 		courses = sch.Ordered()
 		tab     = &tables{
-			instructorMap: make(map[string]*instructorMeta),
-			exam:          make([]*models.Exam, 0, 128), // 128 is arbitrary
+			instructor: make(map[string]*models.Instructor),
+			exam:       make([]*models.Exam, 0, 128), // 128 is arbitrary
 		}
-		hash = fnv.New32a()
-		err  error
+		err error
 	)
 
 	tab.course, err = GetCourseTable(courses, 150)
@@ -191,18 +189,12 @@ func getTablesData(sch ucm.Schedule, conf *updateConfig) (*tables, error) {
 		if c.Time.End.Year() == 0 {
 			c.Time.End = c.Time.End.AddDate(1, 0, 0)
 		}
-		_, ok := tab.instructorMap[c.Instructor]
+		_, ok := tab.instructor[c.Instructor]
 		if !ok {
-			if _, err := hash.Write([]byte(c.Instructor)); err != nil {
+			tab.instructor[c.Instructor], err = newInstructor(c.Instructor)
+			if err != nil {
 				return nil, err
 			}
-			tab.instructorMap[c.Instructor] = &instructorMeta{
-				name:     c.Instructor,
-				ncourses: 1,
-				id:       int64(hash.Sum32()),
-				crns:     []int{c.CRN},
-			}
-			hash.Reset()
 		}
 		if c.Exam != nil {
 			tab.exam = append(tab.exam, &models.Exam{
@@ -223,7 +215,9 @@ func updates(w io.Writer, db *sqlx.DB, tab *tables) (err error) {
 
 	fmt.Fprintf(w, "%v ", time.Now().Sub(t))
 	fmt.Fprintf(w, "instructor:")
-	err = updateInstructorsTable(db.DB, tab.instructorMap)
+
+	instructors := instructorMapToInterfaceSlice(tab.instructor)
+	err = updateInstructorsTable("instructor", db.DB, instructors)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -264,28 +258,18 @@ func updates(w io.Writer, db *sqlx.DB, tab *tables) (err error) {
 	}
 	fmt.Fprintf(w, "%v ok|", time.Now().Sub(t))
 	t = time.Now()
-
 	return nil
 }
 
-func writes(conf updateConfig, tab *tables) error {
-	var (
-		err         error
-		i           = 0
-		instructors = make([]interface{}, len(tab.instructorMap))
-	)
-	for _, in := range tab.instructorMap {
-		instructors[i] = &models.Instructor{ID: in.id, Name: in.name}
-		i++
-	}
+func writes(tab *tables) error {
 	for file, data := range map[string][]interface{}{
 		"labs_disc.csv":  interfaceSlice(tab.aux),
 		"lecture.csv":    interfaceSlice(tab.lectures),
 		"exam.csv":       interfaceSlice(tab.exam),
 		"course.csv":     interfaceSlice(tab.course),
-		"instructor.csv": instructors,
+		"instructor.csv": instructorMapToInterfaceSlice(tab.instructor),
 	} {
-		err = writeCSVFile(file, data)
+		err := writeCSVFile(file, data)
 		if err != nil {
 			return err
 		}
@@ -293,48 +277,11 @@ func writes(conf updateConfig, tab *tables) error {
 	return nil
 }
 
-type instructorMeta struct {
-	name     string
-	ncourses int
-	id       int64
-	crns     []int
-}
-
 func max(a, b int) int {
 	if a > b {
 		return a
 	}
 	return b
-}
-
-// depricated for getTablesData
-// TODO: remove this
-func getInstructors(crs []*ucm.Course) (map[string]*instructorMeta, error) {
-	var (
-		instructors = make(map[string]*instructorMeta)
-	)
-	hash := fnv.New32a()
-	for _, c := range crs {
-		inst, ok := instructors[c.Instructor]
-		if ok {
-			inst.ncourses++
-			inst.crns = append(inst.crns, c.CRN)
-		} else {
-			_, err := hash.Write([]byte(c.Instructor))
-			if err != nil {
-				return nil, err
-			}
-			inst = &instructorMeta{
-				name:     c.Instructor,
-				ncourses: 1,
-				id:       int64(hash.Sum32()),
-			}
-			inst.crns = append(inst.crns, c.CRN)
-			instructors[c.Instructor] = inst
-			hash.Reset()
-		}
-	}
-	return instructors, nil
 }
 
 func (t *tables) populate(courses []*ucm.Course, sch ucm.Schedule) error {
@@ -347,12 +294,11 @@ func (t *tables) populate(courses []*ucm.Course, sch ucm.Schedule) error {
 			c.Time.End = c.Time.End.AddDate(1, 0, 0)
 		}
 		instructorID := int64(0)
-		instructor, ok := t.instructorMap[c.Instructor]
+		instructor, ok := t.instructor[c.Instructor]
 		if !ok {
 			return errors.New("could not find an instructor")
 		}
-		instructorID = instructor.id
-
+		instructorID = instructor.ID
 		if _, ok := dup[c.CRN]; ok {
 			return errors.New("table.populate: tried to put duplicate crn in db")
 		}
@@ -385,6 +331,17 @@ func (t *tables) populate(courses []*ucm.Course, sch ucm.Schedule) error {
 		}
 	}
 	return nil
+}
+
+func newInstructor(name string) (*models.Instructor, error) {
+	hash := fnv.New32a()
+	if _, err := hash.Write([]byte(name)); err != nil {
+		return nil, err
+	}
+	return &models.Instructor{
+		Name: name,
+		ID:   int64(hash.Sum32()),
+	}, nil
 }
 
 // GetDiscussionLecture will return the lecture for a given discussion.
@@ -482,15 +439,13 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Entry, error
 					continue
 				}
 				crs := catalog.Entry{
-					CRN:       c.CRN,
-					Subject:   c.Subject,
-					CourseNum: c.Number,
-					Type:      c.Activity,
-					Title:     cleanTitle(c.Title),
-					Units:     c.Units,
-					// Days:      daysString(c.Days),
-					Days: catalog.NewWeekdays(c.Days),
-
+					CRN:         c.CRN,
+					Subject:     c.Subject,
+					CourseNum:   c.Number,
+					Type:        c.Activity,
+					Title:       cleanTitle(c.Title),
+					Units:       c.Units,
+					Days:        catalog.NewWeekdays(c.Days),
 					Description: info,
 					Capacity:    c.Capacity,
 					Enrolled:    c.Enrolled,
@@ -526,7 +481,6 @@ func daysString(days []time.Weekday) string {
 	arr := pq.Array(s)
 	val, err := arr.Value()
 	if err != nil {
-		// return "{" + strings.Join(s, ",") + "}"
 		return "{}"
 	}
 	return val.(string)
@@ -552,4 +506,16 @@ func str(x interface{}) string {
 	default:
 		return ""
 	}
+}
+
+func instructorMapToInterfaceSlice(m map[string]*models.Instructor) []interface{} {
+	var (
+		arr = make([]interface{}, len(m))
+		i   = 0
+	)
+	for _, inst := range m {
+		arr[i] = inst
+		i++
+	}
+	return arr
 }

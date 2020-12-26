@@ -70,18 +70,16 @@ func run() error {
 		})
 	}
 	app.RegisterRoutes(v1)
+
 	r.POST("/login", auth.LoginHandler)
-
-	protect := auth.MiddlewareFunc()
-
-	r.GET("/admin", protect, func(c *gin.Context) {
+	r.GET("/admin", auth.MiddlewareFunc(), func(c *gin.Context) {
 		c.JSON(200, map[string]interface{}{
 			"success": "yay",
 		})
 	})
 
 	v1.GET("/debug",
-		protect,
+		auth.MiddlewareFunc(),
 		func(c *gin.Context) {
 			data := map[string]interface{}{
 				"time":    time.Now(),

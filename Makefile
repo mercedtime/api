@@ -31,30 +31,25 @@ coverage:
 
 build-test-image:
 	docker image build -t mt-api.tests . -f ./docker/Dockerfile.tests
+
 run-test-image:
 	docker container run --rm -it mt-api.test
+
+DUMP_FLAGS=-Fc -Z 9 -d $(POSTGRES_DB) -U $(POSTGRES_USER) -h $(PG_HOST) -p $(POSTGRES_PORT)
 
 dump:
 	psql -h $(PG_HOST) -p $(POSTGRES_PORT) -d $(POSTGRES_DB) -U $(POSTGRES_USER) -c 'select * from counts'
 	@if [ -f $(DUMP_FILE) ]; then rm $(DUMP_FILE); fi
-	pg_dump -Fc -Z 9 \
-		-h $(PG_HOST) -p $(POSTGRES_PORT) \
-		--file=$(DUMP_FILE) \
-		-d $(POSTGRES_DB) -U $(POSTGRES_USER)
+	pg_dump $(DUMP_FLAGS) --file=$(DUMP_FILE)
 
 	@if [ -f $(ENROLLMENT_DUMP) ]; then rm $(ENROLLMENT_DUMP); fi
-	pg_dump \
-		-Fc -Z 9 \
-		--data-only --table=enrollment \
-		--file=$(ENROLLMENT_DUMP) \
-		-h $(PG_HOST) -p $(POSTGRES_PORT) \
-		-d $(POSTGRES_DB) -U $(POSTGRES_USER)
+	pg_dump $(DUMP_FLAGS) --file=$(ENROLLMENT_DUMP) --data-only --table=enrollment
 
 db/data/mercedtime.dump:
 	@if [ -f db/data/mercedtime.dump ]; then rm db/data/mercedtime.dump; fi
 	pg_dump -Fc -Z 9 \
 		-h localhost -p $(POSTGRES_PORT) \
-		--file=db/data/mercedtime.dump \
+		--file=db/data/mercedtime.dump   \
 		$(POSTGRES_DB) -U $(POSTGRES_USER)
 
 restore:
@@ -63,8 +58,8 @@ restore:
 
 historical-data:
 	$(RM) db/data/fall-2020/*.csv db/data/summer-2020/*.csv
-	go run ./cmd/mtupdate -csv -out=db/data/fall-2020 -year=2020 -term=fall
-	go run ./cmd/mtupdate -csv -out=db/data/summer-2020 -year=2020 -term=summer
-
+	go build ./cmd/mtupdate
+	./mtupdate -csv -out=db/data/fall-2020 -year=2020 -term=fall
+	./mtupdate -csv -out=db/data/summer-2020 -year=2020 -term=summer
 
 .PHONY: build clean gen test coverage dump

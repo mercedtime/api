@@ -36,6 +36,8 @@
   "State" struct that contains this global route state to be accessed globally
   be the api. (maybe make a new internal package routes with "routes.State")
 - GraphQL!!!
+  - <https://github.com/99designs/gqlgen>
+  - <https://github.com/graphql-go/graphql>
 
 # TODO: Thinking Shit
 
@@ -52,10 +54,7 @@
 
 Get access to protected resources by giving the login endpoint your credentials.
 
-Responses with a [JSON Web Token (_JWT_)](https://jwt.io/)
-
-<details>
-  <summary>Example Request Body</summary>
+Example Request Body:
 
 ```json
 {
@@ -64,7 +63,7 @@ Responses with a [JSON Web Token (_JWT_)](https://jwt.io/)
 }
 ```
 
-</details><br>
+Responses with a [JSON Web Token (_JWT_)](https://jwt.io/)
 
 **GET** `/lectures`
 <a name="list-lectures"></a>
@@ -73,8 +72,7 @@ Responses with a [JSON Web Token (_JWT_)](https://jwt.io/)
 - `offset=<offset>` __int__ Offset the response list by some offset number
 - `subject=<code>` __string__ Only return the lectures for the subject that matches `<code>`
 
-<details>
-<summary>Example Response</summary>
+<details><summary>Example Response</summary>
 
 ```json
 {}
@@ -88,8 +86,7 @@ Responses with a [JSON Web Token (_JWT_)](https://jwt.io/)
 - `limit=<limit>` __int__ Limit the number of results to `<limit>`
 - `offset=<offset>` __int__ Offset the response list by some offset number
 
-<details>
-<summary>Example Response</summary>
+<details><summary>Example Response</summary>
 
 ```json
 {}
@@ -103,8 +100,7 @@ Responses with a [JSON Web Token (_JWT_)](https://jwt.io/)
 - `limit=<limit>` __int__ Limit the number of results to `<limit>`
 - `offset=<offset>` __int__ Offset the response list by some offset number
 
-<details>
-<summary>Example Response</summary>
+<details><summary>Example Response</summary>
 
 ```json
 {}
@@ -118,8 +114,7 @@ Responses with a [JSON Web Token (_JWT_)](https://jwt.io/)
 - `limit=<limit>` __int__ Limit the number of results to `<limit>`
 - `offset=<offset>` __int__ Offset the response list by some offset number
 
-<details>
-<summary>Example Response</summary>
+<details><summary>Example Response</summary>
 
 ```json
 {}
@@ -133,8 +128,7 @@ Responses with a [JSON Web Token (_JWT_)](https://jwt.io/)
 - `limit=<limit>` __int__ Limit the number of results to `<limit>`
 - `offset=<offset>` __int__ Offset the response list by some offset number
 
-<details>
-<summary>Example Response</summary>
+<details><summary>Example Response</summary>
 
 ```json
 {}
@@ -155,3 +149,4 @@ something like this.
     "status": 400
 }
 ```
+
