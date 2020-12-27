@@ -85,7 +85,10 @@ func TestListEndpoints(t *testing.T) {
 			"term":    {"spring"},
 			"limit":   {"53"},
 		}, Code: 200},
-		// {Path: "/catalog/2020/summer/courses", Query: url.Values{"subject": {"math"}, "limit": {"2"}}},
+		{Path: "/catalog/2021/spring", Code: 200, Limit: 23},
+		{Path: "/catalog/2021/spring", Code: 200, Query: url.Values{"subject": {"anth"}, "limit": {"2"}}},
+		{Path: "/catalog/2020/fall", Code: 200, Limit: 3, Offset: 5},
+		{Path: "/catalog/2020/summer", Code: 200, Limit: 3, Offset: 5},
 	} {
 		r := &http.Request{
 			Method: "GET",

@@ -1,12 +1,3 @@
--- DROP TABLE
--- IF EXISTS
---     course,
---     exam,
---     instructor,
---     aux,
---     lectures,
---     prerequisites;
-
 CREATE TYPE weekday AS ENUM(
 	'sunday',
 	'monday',
@@ -63,7 +54,6 @@ CREATE TABLE course (
     remaining   INTEGER,
 
     updated_at   TIMESTAMPTZ DEFAULT now(),
-    -- auto_updated INTEGER DEFAULT 0,
     year         INT NOT NULL,
     term_id      INT NOT NULL,
 
@@ -105,6 +95,10 @@ CREATE TABLE aux (
     PRIMARY KEY (crn),
     FOREIGN KEY (crn)           REFERENCES course(crn)
 );
+
+-- CREATE INDEX aux_course_crn_idx ON aux (course_crn);
+-- CREATE INDEX non_zero_aux_course_crn_idx
+--           ON aux (course_crn) WHERE course_crn != 0;
 
 CREATE TABLE exam (
     crn        INTEGER NOT NULL,
@@ -215,29 +209,3 @@ LEFT OUTER JOIN instructor i ON i.id = l.instructor_id
        ORDER BY c.subject ASC,
                 c.course_num ASC,
                 c.type DESC;
-
-
-CREATE VIEW catalog AS
-     SELECT c.*, array_to_json(sub) AS subcourse
-       FROM course c
- LEFT OUTER JOIN (
-     SELECT array_agg(json_build_object(
-		    'crn',               aux.crn,
-		    'course_crn',        aux.course_crn,
-		    'section',           aux.section,
-		    'days',              course.days,
-		    'enrolled',          course.enrolled,
-		    'start_time',        aux.start_time,
-		    'end_time',          aux.end_time,
-		    'building_room',     aux.building_room,
-		    'instructor_id',     aux.instructor_id,
-		    'updated_at',        aux.updated_at,
-		    'course_updated_at', course.updated_at
-      )) AS sub, course_crn
-       FROM aux
-       JOIN course ON aux.crn = course.crn
-      WHERE aux.course_crn != 0
-   GROUP BY aux.course_crn
-) a
-         ON c.crn = a.course_crn
-      WHERE c.crn IN (SELECT crn FROM exam);

@@ -65,7 +65,8 @@ func run() error {
 	if config.GetString("mode") == "debug" {
 		// CORS
 		v1.Use(func(c *gin.Context) {
-			c.Header("Access-Control-Allow-Origin", "http://localhost:3000")
+			// c.Header("Access-Control-Allow-Origin", "http://localhost:3000")
+			c.Header("Access-Control-Allow-Origin", "*")
 			c.Next()
 		})
 	}

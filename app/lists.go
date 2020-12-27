@@ -56,10 +56,12 @@ func (sc *subCourseList) Scan(val interface{}) error {
 
 func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 	var (
-		catalogQuery = `SELECT c.*, array_to_json(sub) AS subcourses
+		// catalogQuery = "SELECT * FROM catalog WHERE type IN ('LECT','SEM','STDO')"
+		catalogQuery = `
+     SELECT c.*, subcourses
        FROM course c
  LEFT OUTER JOIN (
-     SELECT array_agg(json_build_object(
+     SELECT json_agg(json_build_object(
 		    'crn',               aux.crn,
 		    'course_crn',        aux.course_crn,
 		    'section',           aux.section,
@@ -69,28 +71,28 @@ func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 		    'end_time',          aux.end_time,
 		    'building_room',     aux.building_room,
 		    'instructor_id',     aux.instructor_id,
-		    'updated_at',        aux.updated_at
-      )) AS sub, course_crn
+		    'updated_at',        aux.updated_at,
+		    'course_updated_at', course.updated_at
+      )) AS subcourses, course_crn
        FROM aux
        JOIN course ON aux.crn = course.crn
       WHERE aux.course_crn != 0
    GROUP BY aux.course_crn
-) a
-         ON c.crn = a.course_crn
-      WHERE c.crn IN (SELECT crn FROM exam)`
+) a ON c.crn = a.course_crn
+WHERE type IN ('LECT','SEM','STDO')`
 
 		addons = map[string]string{
-			"year":    " AND c.year = $%d",
-			"term":    " AND c.term_id = $%d",
-			"subject": " AND c.subject = $%d",
+			"year":    " AND year = $%d",
+			"term":    " AND term_id = $%d",
+			"subject": " AND subject = $%d",
 		}
 	)
 	// using a view for this query
-	// catalogQuery = "SELECT * FROM catalog WHERE "
 	type response struct {
 		catalog.Entry
 		Subcourses subCourseList `db:"subcourses" json:"subcourses"`
 	}
+	catalogQuery = "select * from catalog where type in ('LECT','SEM','STDO')"
 
 	return func(c *gin.Context) {
 		var (

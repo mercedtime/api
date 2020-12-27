@@ -28,3 +28,4 @@ app/testdata/testuser.json
 *.txt
 test.sh
 counts.sh
+wait-for

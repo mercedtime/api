@@ -9,7 +9,7 @@ require (
 	github.com/go-playground/validator/v10 v10.4.1 // indirect
 	github.com/golang/protobuf v1.4.3 // indirect
 	github.com/harrybrwn/config v0.1.1
-	github.com/harrybrwn/edu v0.0.4-0.20201215111543-b7845aa570bc
+	github.com/harrybrwn/edu v0.0.4-0.20201226075726-5d217f46bd33
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/json-iterator/go v1.1.10 // indirect
 	github.com/lib/pq v1.9.0

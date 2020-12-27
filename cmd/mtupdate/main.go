@@ -68,10 +68,11 @@ func main() {
 	config.SetType("yml")
 	config.AddPath(".")
 	config.SetConfig(&conf)
-	config.ReadConfigFile() // ignore error if not there
+
 	if err := config.InitDefaults(); err != nil {
 		log.Println("could not initialize config defaults")
 	}
+	config.ReadConfigFile() // ignore error if not there
 
 	flag.StringVar(&conf.Database.Password, "password", conf.Database.Password, "give postgres a password")
 	flag.StringVar(&conf.Database.Host, "host", conf.Database.Host, "specify the database host")
@@ -129,6 +130,11 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		defer func() {
+			if err = closeDB(db); err != nil {
+				log.Println("error while closing database:", err)
+			}
+		}()
 		err = updates(os.Stdout, db, tab)
 		if err != nil {
 			log.Fatal("DB Error:", err)
@@ -151,6 +157,14 @@ func main() {
 		}
 		fmt.Print("csv files written ")
 	}
+}
+
+func closeDB(db *sqlx.DB) (err error) {
+	_, err = db.Exec("REFRESH MATERIALIZED VIEW CONCURRENTLY catalog")
+	if e := db.Close(); e != nil && err == nil {
+		err = e
+	}
+	return err
 }
 
 type tables struct {
@@ -299,7 +313,7 @@ func (t *tables) populate(courses []*ucm.Course, sch ucm.Schedule) error {
 			return errors.New("could not find an instructor")
 		}
 		instructorID = instructor.ID
-		if _, ok := dup[c.CRN]; ok {
+		if _, ok := dup[c.CRN]; ok { // check for duplicate crn's
 			return errors.New("table.populate: tried to put duplicate crn in db")
 		}
 		dup[c.CRN] = struct{}{}
@@ -334,13 +348,21 @@ func (t *tables) populate(courses []*ucm.Course, sch ucm.Schedule) error {
 }
 
 func newInstructor(name string) (*models.Instructor, error) {
-	hash := fnv.New32a()
-	if _, err := hash.Write([]byte(name)); err != nil {
-		return nil, err
+	var (
+		id   int64
+		hash = fnv.New32a()
+	)
+	if name == "Staff" {
+		id = 1
+	} else {
+		if _, err := hash.Write([]byte(name)); err != nil {
+			return nil, err
+		}
+		id = int64(hash.Sum32())
 	}
 	return &models.Instructor{
 		Name: name,
-		ID:   int64(hash.Sum32()),
+		ID:   id,
 	}, nil
 }
 
