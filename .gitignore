@@ -32,3 +32,4 @@ wait-for
 
 # Code Gen
 /gql
+/app/internal/gql
