@@ -7,14 +7,19 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/99designs/gqlgen/graphql/handler"
+	"github.com/99designs/gqlgen/graphql/playground"
 	ginjwt "github.com/appleboy/gin-jwt/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+	"github.com/mercedtime/api/app/internal/gql"
 	"github.com/mercedtime/api/db/models"
 	"github.com/mercedtime/api/users"
 
 	_ "github.com/lib/pq" // app package relies on pq for postgres
 )
+
+//go:generate go run github.com/99designs/gqlgen
 
 // App is the main app
 type App struct {
@@ -58,6 +63,24 @@ func (a *App) GetInstructor(id interface{}) (*models.Instructor, error) {
 	return &inst, nil
 }
 
+// GraphQLHander returns a graphql hander function
+func (a *App) GraphQLHander() func(c *gin.Context) {
+	h := handler.NewDefaultServer(gql.NewExecutableSchema(
+		gql.Config{Resolvers: &Resolver{a}},
+	))
+	return func(c *gin.Context) {
+		h.ServeHTTP(c.Writer, c.Request)
+	}
+}
+
+// GraphQLPlayground returns a hander func for the graphql playground
+func (a *App) GraphQLPlayground(endpoint string) gin.HandlerFunc {
+	h := playground.Handler("GraphQL", endpoint)
+	return func(c *gin.Context) {
+		h.ServeHTTP(c.Writer, c.Request)
+	}
+}
+
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.Engine.ServeHTTP(w, r)
 }
@@ -94,7 +117,7 @@ func (e *Error) Error() string {
 var LoggerConfig = gin.LoggerConfig{
 	Formatter: func(f gin.LogFormatterParams) string {
 		return fmt.Sprintf(
-			"[%s] %6v %s%d%s %s %s\n",
+			"[\x1b[35m%s\x1b[0m] %6v %s%d%s %s %s\n",
 			f.TimeStamp.Format(time.Stamp),
 			f.Latency,
 			statusColor(f.StatusCode), f.StatusCode, "\x1b[0m",
@@ -111,7 +134,7 @@ func (a *App) NewJWTAuth() (*ginjwt.GinJWTMiddleware, error) {
 	}
 	middleware, err := ginjwt.New(&ginjwt.GinJWTMiddleware{
 		IdentityKey: a.jwtIdentidyKey,
-		Key:         a.Config.Secret,
+		Key:         []byte(a.Config.Secret),
 		// TODO use better a timeout
 		Timeout:    time.Hour,
 		MaxRefresh: time.Hour * 12,

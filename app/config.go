@@ -15,7 +15,7 @@ type Config struct {
 	Host     string         `config:"host,shorthand=H,usage=server host" default:"0.0.0.0"`
 	Port     int64          `config:"port,shorthand=P,usage=server port" default:"8080"`
 	Mode     string         `config:"mode,usage=set the gin mode ('debug'|'release')" default:"debug"`
-	Secret   []byte         `config:"secret,notflag" env:"JWT_SECRET"`
+	Secret   string         `config:"secret,notflag" env:"JWT_SECRET"`
 	Database DatabaseConfig `config:"db" yaml:"db"`
 }
 

@@ -45,15 +45,13 @@ func run() error {
 		c.JSON(404, app.ErrStatus(404, "no route for "+c.Request.URL.Path))
 	})
 
-	// TODO generate a better secret key
-	conf.Secret = []byte("secret key")
-	app := app.App{
+	a := app.App{
 		DB:     db,
 		Config: conf,
 		Engine: r,
 	}
 
-	auth, err := app.NewJWTAuth()
+	auth, err := a.NewJWTAuth()
 	if err != nil {
 		return errors.Wrap(err, "could not create auth middleware")
 	}
@@ -62,15 +60,17 @@ func run() error {
 	}
 
 	v1 := r.Group("/api/v1")
-	if config.GetString("mode") == "debug" {
+	if config.GetString("mode") == "debug" || true {
 		// CORS
 		v1.Use(func(c *gin.Context) {
-			// c.Header("Access-Control-Allow-Origin", "http://localhost:3000")
 			c.Header("Access-Control-Allow-Origin", "*")
 			c.Next()
 		})
 	}
-	app.RegisterRoutes(v1)
+	a.RegisterRoutes(v1)
+
+	r.POST("/graphql", a.GraphQLHander())
+	r.GET("/graphql/playground", a.GraphQLPlayground("/graphql"))
 
 	r.POST("/login", auth.LoginHandler)
 	r.GET("/admin", auth.MiddlewareFunc(), func(c *gin.Context) {
@@ -100,7 +100,7 @@ func run() error {
 
 	srv := http.Server{
 		Addr:           addr,
-		Handler:        &app,
+		Handler:        &a,
 		ReadTimeout:    time.Minute * 5,
 		WriteTimeout:   time.Minute * 5,
 		MaxHeaderBytes: http.DefaultMaxHeaderBytes,

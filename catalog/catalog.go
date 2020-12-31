@@ -1,40 +1,66 @@
 package catalog
 
 import (
-	"log"
+	"encoding/json"
 	"strings"
 	"time"
 
 	"github.com/lib/pq"
 )
 
+type Catalog []*Course
+
+type Course struct {
+	Entry
+	Subcourses SubCourseList `db:"subcourses" json:"subcourses"`
+}
+
 // Entry is an entry in the catalog
 type Entry struct {
-	ID        int    `db:"id" json:"id" csv:"-"`
-	CRN       int    `db:"crn" json:"crn"`
-	Subject   string `db:"subject" json:"subject"`
-	CourseNum int    `db:"course_num" json:"course_num"`
-	Type      string `db:"type" json:"type"`
-	Title     string `db:"title" json:"title"`
+	ID          int       `db:"id" json:"id" csv:"-"`
+	CRN         int       `db:"crn" json:"crn"`
+	Subject     string    `db:"subject" json:"subject"`
+	CourseNum   int       `db:"course_num" json:"course_num"`
+	Type        string    `db:"type" json:"type"`
+	Title       string    `db:"title" json:"title"`
+	Units       int       `db:"units" json:"units" csv:"units"`
+	Days        Weekdays  `db:"days" json:"days" csv:"days" goqu:"skipinsert"`
+	Description string    `db:"description" json:"description"`
+	Capacity    int       `db:"capacity" json:"capacity"`
+	Enrolled    int       `db:"enrolled" json:"enrolled"`
+	Remaining   int       `db:"remaining" json:"remaining"`
+	UpdatedAt   time.Time `db:"updated_at" json:"updated_at" csv:"-" goqu:"skipupdate,skipinsert"`
+	Year        int       `db:"year" json:"year" csv:"year"`
+	TermID      int       `db:"term_id" json:"term_id" csv:"term_id"`
+}
 
-	Units int `db:"units" json:"units" csv:"units"`
+// SubCourseList is a list of SubCourses that maintains
+// interoperability with postgresql json blobs.
+type SubCourseList []SubCourse
 
-	Days Weekdays `db:"days" json:"days" csv:"days" goqu:"skipinsert"`
-	// Days string   `db:"days" json:"days" csv:"days"`
+// Scan will convert the list of subcourses from json
+// to a serialized struct slice.
+func (sc *SubCourseList) Scan(val interface{}) error {
+	b, ok := val.([]byte)
+	if ok {
+		return json.Unmarshal(b, sc)
+	}
+	return nil
+}
 
-	Description string `db:"description" json:"description"`
-	Capacity    int    `db:"capacity" json:"capacity"`
-	Enrolled    int    `db:"enrolled" json:"enrolled"`
-	Remaining   int    `db:"remaining" json:"remaining"`
-
-	UpdatedAt time.Time `db:"updated_at" json:"updated_at" csv:"-" goqu:"skipupdate,skipinsert"`
-	// AutoUpdated int       `db:"auto_updated" json:"-" csv:"-"`
-
-	// InstructorID int    `db:"instructor_id" csv:"-"`
-	// Instructor   string `db:"instructor" csv:"-"`
-
-	Year   int `db:"year" json:"year" csv:"year"`
-	TermID int `db:"term_id" json:"term_id" csv:"term_id"`
+// SubCourse is an auxillary course that is meant to be taken
+// along side some other main course
+type SubCourse struct {
+	CRN          int       `db:"crn" json:"crn"`
+	CourseCRN    int       `db:"course_crn" json:"course_crn"`
+	Section      string    `db:"section" json:"section"`
+	StartTime    time.Time `db:"start_time" json:"start_time,omitempty"`
+	EndTime      time.Time `db:"end_time" json:"end_time,omitempty"`
+	Building     string    `db:"building_room" json:"building_room"`
+	InstructorID int64     `db:"instructor_id" json:"instructor_id"`
+	UpdatedAt    time.Time `db:"updated_at" json:"updated_at" csv:"-" goqu:"skipupdate,skipinsert"`
+	Enrolled     int       `db:"enrolled" json:"enrolled"`
+	Days         Weekdays  `db:"days" json:"days"`
 }
 
 // Weekdays is a slice of weekdays
@@ -42,11 +68,7 @@ type Weekdays []Weekday
 
 // Scan is used when querying the database for weekdays strings
 func (wk *Weekdays) Scan(val interface{}) error {
-	err := pq.Array(wk).Scan(val)
-	if err != nil {
-		log.Println("HERE", err)
-	}
-	return err
+	return pq.Array(wk).Scan(val)
 }
 
 // Weekday is a weekday

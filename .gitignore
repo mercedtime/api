@@ -29,3 +29,6 @@ app/testdata/testuser.json
 test.sh
 counts.sh
 wait-for
+
+# Code Gen
+/gql

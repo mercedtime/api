@@ -150,3 +150,18 @@ something like this.
 }
 ```
 
+## Configuration
+
+```yaml
+host: 0.0.0.0
+port: 8080
+
+db:
+  driver: 'postgres'
+  password: 'database password here'
+  name: 'database name'
+  port: 5432
+  user: 'database user'
+  ssl: 'disable'
+```
+

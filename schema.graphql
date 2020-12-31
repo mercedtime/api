@@ -1,0 +1,54 @@
+type Query {
+  courses(
+    limit: Int,
+    offset: Int,
+    subject: String
+  ): [Course!]!
+  catalog(
+    limit: Int,
+    offset: Int,
+    subject: String
+  ): [Course!]
+  course(id: Int!): Course
+  subjects: [Subject!]!
+}
+
+scalar Date
+
+type Course {
+  id: Int!
+  crn: Int!
+  subject: String
+  course_num: Int
+  type: String
+  title: String
+  units: Int
+  days: [String]
+  description: String
+  capacity: Int
+  enrolled: Int
+  remaining: Int
+  updated_at: Date
+  year: Int!
+  term_id: Int!
+  subcourses: [SubCourse!]
+}
+
+type SubCourse {
+  crn: Int!
+  course_crn: Int!
+  section: String
+  start_time: Date
+  end_time: Date
+  building_room: String
+  instructor_id: Int
+  updated_at: Date
+  enrolled: Int
+  days: [String!]
+}
+
+"""Subject is a school subject, like math or biology"""
+type Subject {
+  code: String
+  name: String
+}

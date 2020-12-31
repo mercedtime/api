@@ -35,14 +35,16 @@ func listParamsMiddleware(c *gin.Context) {
 	c.Next()
 }
 
-// SubCourseList is a list of SubCourses that maintains
-// interoperability with postgresql json blobs.
-type subCourseList []struct {
-	models.SubCourse
+type (
+	// SubCourseList is a list of SubCourses that maintains
+	// interoperability with postgresql json blobs.
+	subCourseList []struct {
+		models.SubCourse
 
-	Enrolled int              `json:"enrolled"`
-	Days     catalog.Weekdays `json:"days"`
-}
+		Enrolled int              `json:"enrolled"`
+		Days     catalog.Weekdays `json:"days"`
+	}
+)
 
 // Scan will convert the list of subcourses from json
 // to a serialized struct slice.
@@ -56,50 +58,22 @@ func (sc *subCourseList) Scan(val interface{}) error {
 
 func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 	var (
-		// catalogQuery = "SELECT * FROM catalog WHERE type IN ('LECT','SEM','STDO')"
-		catalogQuery = `
-     SELECT c.*, subcourses
-       FROM course c
- LEFT OUTER JOIN (
-     SELECT json_agg(json_build_object(
-		    'crn',               aux.crn,
-		    'course_crn',        aux.course_crn,
-		    'section',           aux.section,
-		    'days',              course.days,
-		    'enrolled',          course.enrolled,
-		    'start_time',        aux.start_time,
-		    'end_time',          aux.end_time,
-		    'building_room',     aux.building_room,
-		    'instructor_id',     aux.instructor_id,
-		    'updated_at',        aux.updated_at,
-		    'course_updated_at', course.updated_at
-      )) AS subcourses, course_crn
-       FROM aux
-       JOIN course ON aux.crn = course.crn
-      WHERE aux.course_crn != 0
-   GROUP BY aux.course_crn
-) a ON c.crn = a.course_crn
-WHERE type IN ('LECT','SEM','STDO')`
-
 		addons = map[string]string{
 			"year":    " AND year = $%d",
 			"term":    " AND term_id = $%d",
 			"subject": " AND subject = $%d",
 		}
 	)
+
 	// using a view for this query
-	type response struct {
-		catalog.Entry
-		Subcourses subCourseList `db:"subcourses" json:"subcourses"`
-	}
-	catalogQuery = "select * from catalog where type in ('LECT','SEM','STDO')"
+	catalogQuery := "select * from catalog where type in ('LECT','SEM','STDO')"
 
 	return func(c *gin.Context) {
 		var (
 			q      = catalogQuery
 			args   = make([]interface{}, 0, 5)
 			argc   = 1
-			result = make([]response, 0, 32)
+			result = make(catalog.Catalog, 0, 32)
 			params = PageParams{}
 		)
 		if err := c.BindQuery(&params); err != nil {
