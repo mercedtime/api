@@ -21,6 +21,8 @@ VIEW catalog AS
 			'type',              course.type,
 		    'days',              course.days,
 		    'enrolled',          course.enrolled,
+			'capacity', 		 course.capacity,
+			'remaining', 		 course.remaining,
 		    'start_time',        aux.start_time,
 		    'end_time',          aux.end_time,
 		    'building_room',     aux.building_room,

@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -49,7 +48,7 @@ func (a *App) GetUser(u users.User) (*users.User, error) {
 	} else if u.Name != "" {
 		return users.GetUserByName(a.DB, u.Name)
 	}
-	return nil, errors.New("not enough info to find user")
+	return nil, &Error{"not enough info to find user", 500}
 }
 
 // GetInstructor will get an instructor by id
@@ -86,6 +85,13 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 var _ http.Handler = (*App)(nil)
+
+// Msg is a standardized response message
+// for misc json endpoints.
+type Msg struct {
+	Msg    string `json:"message"`
+	Status int    `json:"status,omitempty"`
+}
 
 // Error is an app spesific error
 type Error struct {
@@ -148,7 +154,7 @@ func (a *App) NewJWTAuth() (*ginjwt.GinJWTMiddleware, error) {
 		Authorizator:    a.authorize,
 		IdentityHandler: a.identityHandler,
 		Unauthorized: func(c *gin.Context, code int, message string) {
-			c.JSON(code, &Error{
+			c.AbortWithStatusJSON(code, &Error{
 				Status: code,
 				Msg:    message,
 			})

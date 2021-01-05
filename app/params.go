@@ -9,27 +9,27 @@ import (
 
 // PageParams are url params for api pagination
 type PageParams struct {
-	Limit  uint `form:"limit"  query:"limit"  db:"limit"`
-	Offset uint `form:"offset" query:"offset" db:"offset"`
+	Limit  *uint `form:"limit"  query:"limit"  db:"limit"`
+	Offset *uint `form:"offset" query:"offset" db:"offset"`
 }
 
 func (pp *PageParams) toExpr() goqu.Ex {
 	ex := goqu.Ex{}
-	if pp.Limit != 0 {
+	if pp.Limit != nil {
 		ex["limit"] = pp.Limit
 	}
-	if pp.Offset != 0 {
+	if pp.Offset != nil {
 		ex["offset"] = pp.Offset
 	}
 	return ex
 }
 
 func (pp *PageParams) appendSelect(stmt *goqu.SelectDataset) *goqu.SelectDataset {
-	if pp.Limit != 0 {
-		stmt = stmt.Limit(pp.Limit)
+	if pp.Limit != nil {
+		stmt = stmt.Limit(*pp.Limit)
 	}
-	if pp.Offset != 0 {
-		stmt = stmt.Offset(pp.Offset)
+	if pp.Offset != nil {
+		stmt = stmt.Offset(*pp.Offset)
 	}
 	return stmt
 }
@@ -39,12 +39,12 @@ func (pp *PageParams) asSQL(stmtIndex int) (string, []interface{}, int) {
 		q    string
 		args = make([]interface{}, 0, 2)
 	)
-	if pp.Limit != 0 {
-		args = append(args, pp.Limit)
+	if pp.Limit != nil {
+		args = append(args, *pp.Limit)
 		q += fmt.Sprintf(" LIMIT $%d", stmtIndex)
 		stmtIndex++
 	}
-	if pp.Offset != 0 {
+	if pp.Offset != nil {
 		args = append(args, pp.Offset)
 		q += fmt.Sprintf(" OFFSET $%d", stmtIndex)
 		stmtIndex++

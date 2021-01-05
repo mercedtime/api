@@ -25,6 +25,7 @@ test.sql
 # Testing
 requests.http
 app/testdata/testuser.json
+app/testdata/testlogin.json
 *.txt
 test.sh
 counts.sh

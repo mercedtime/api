@@ -13,18 +13,33 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 	"github.com/mercedtime/api/db/models"
 	"github.com/mercedtime/api/users"
 )
 
 func Test(t *testing.T) {
-	// a := testApp(t)
-	// defer a.Close()
+	a := testApp(t)
+	defer a.Close()
 	// stmt, err := a.DB.PrepareNamed(pq.CopyIn("testing", "a", "b", "c"))
 	// if err != nil {
 	// 	t.Fatal(err)
 	// }
 	// fmt.Println(pq.CopyIn("testing", "a", "b", "c"))
+	rows, err := a.DB.Query(`
+  SELECT array_agg(aux) FROM aux
+   WHERE aux.course_crn != 0
+GROUP BY aux.course_crn`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var a []models.SubCourse
+		if err = rows.Scan(pq.Array(&a)); err != nil {
+			t.Fatal(err)
+		}
+		fmt.Println(a)
+	}
 }
 
 func testConfig() *Config {

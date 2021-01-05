@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -59,20 +60,45 @@ func run() error {
 		return errors.Wrap(err, "could not init auth middleware")
 	}
 
+	cors := func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", strings.Join([]string{
+			"Content-Type",
+			"Authorization",
+			"User-Agent",
+			"Referer",
+			"Access-Control-Request-Headers",
+			"Access-Control-Allow-Methods",
+		}, ","))
+		c.Next()
+	}
 	v1 := r.Group("/api/v1")
 	if config.GetString("mode") == "debug" || true {
-		// CORS
-		v1.Use(func(c *gin.Context) {
-			c.Header("Access-Control-Allow-Origin", "*")
-			c.Next()
-		})
+		r.Use(cors)
+		v1.Use(cors)
 	}
 	a.RegisterRoutes(v1)
 
 	r.POST("/graphql", a.GraphQLHander())
 	r.GET("/graphql/playground", a.GraphQLPlayground("/graphql"))
 
-	r.POST("/login", auth.LoginHandler)
+	v1.OPTIONS("/auth/login", func(c *gin.Context) { c.Status(204) })
+	v1.POST("/auth/login", auth.LoginHandler)
+
+	v1.OPTIONS("/auth/logout", func(c *gin.Context) { c.Status(204) })
+	v1.POST("/auth/logout", auth.LogoutHandler)
+	v1.GET("/auth/logout", auth.LogoutHandler)
+
+	v1.OPTIONS("/auth/refresh", func(c *gin.Context) { c.Status(204) })
+	v1.GET("/auth/refresh", auth.RefreshHandler)
+
+	r.OPTIONS("/signup", func(c *gin.Context) { c.Status(204) })
+	r.POST("/signup", func(c *gin.Context) {
+		a.PostUser(c)
+		// auth.LoginHandler(c)
+	})
+
 	r.GET("/admin", auth.MiddlewareFunc(), func(c *gin.Context) {
 		c.JSON(200, map[string]interface{}{
 			"success": "yay",

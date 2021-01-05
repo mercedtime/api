@@ -12,7 +12,6 @@ import (
 // RegisterRoutes will setup all the app routes
 func (a *App) RegisterRoutes(g *gin.RouterGroup) {
 	a.lectureGroup(g)
-
 	// utility endpoints
 	g.GET("/subjects", a.subjects)
 	g.GET("/terms", a.availbleTerms)
@@ -26,14 +25,13 @@ func (a *App) RegisterRoutes(g *gin.RouterGroup) {
 	g.GET("/courses", termyearMiddle, a.listCourses)
 	lists.GET("/catalog/:year/:term", termyearMiddle, getCatalog(a.DB))
 
-	ugroup := g.Group("/user")
-	ugroup.POST("/", a.PostUser)
-	ugroup.GET("/:id", idParamMiddleware, a.getUser)
-	ugroup.DELETE("/:id", idParamMiddleware, a.deleteUser)
+	g.OPTIONS("/user", func(c *gin.Context) { c.Status(204) })
+	g.POST("/user", a.PostUser)
+	g.GET("/user/:id", idParamMiddleware, a.getUser)
+	g.DELETE("/user/:id", idParamMiddleware, a.deleteUser)
 
-	inst := g.Group("/instructor")
-	inst.GET("/:id", instructorFromID(a))
-	inst.GET("/:id/courses", instructorCourses(a.DB))
+	g.GET("/instructor/:id", instructorFromID(a))
+	g.GET("/instructor/:id/courses", instructorCourses(a.DB))
 }
 
 // LectureGroup returns the router group for all the lecture routes.

@@ -60,6 +60,8 @@ type SubCourse struct {
 	InstructorID int64     `db:"instructor_id" json:"instructor_id"`
 	UpdatedAt    time.Time `db:"updated_at" json:"updated_at" csv:"-" goqu:"skipupdate,skipinsert"`
 	Enrolled     int       `db:"enrolled" json:"enrolled"`
+	Capacity     int       `db:"capacity" json:"capacity"`
+	Remaining    int       `db:"remaining" json:"remaining"`
 	Days         Weekdays  `db:"days" json:"days"`
 }
 

@@ -66,7 +66,8 @@ func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 	)
 
 	// using a view for this query
-	catalogQuery := "select * from catalog where type in ('LECT','SEM','STDO')"
+	catalogQuery := `select * from catalog
+					 where type in ('LECT','SEM','STDO')`
 
 	return func(c *gin.Context) {
 		var (
@@ -89,12 +90,12 @@ func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 			}
 		}
 
-		if params.Limit != 0 {
+		if params.Limit != nil {
 			q += fmt.Sprintf(" LIMIT $%d", argc)
 			args = append(args, params.Limit)
 			argc++
 		}
-		if params.Offset != 0 {
+		if params.Offset != nil {
 			q += fmt.Sprintf(" OFFSET $%d", argc)
 			args = append(args, params.Offset)
 			argc++

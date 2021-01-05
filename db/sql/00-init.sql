@@ -38,15 +38,13 @@ CREATE TABLE instructor (
 -- * subcourse: auxilary course work to go along with a course
 
 CREATE TABLE course (
-    id         SERIAL NOT NULL,
-    crn        INTEGER UNIQUE NOT NULL, -- unique contraint may not hold in the future
-    subject    VARCHAR(4),
-    course_num INTEGER,  -- TODO change to 'num'
-    type       VARCHAR(4),
-    title      VARCHAR(1024),
-
+    id          SERIAL NOT NULL,
+    crn         INTEGER UNIQUE NOT NULL, -- unique contraint may not hold in the future
+    subject     VARCHAR(4),
+    course_num  INTEGER,  -- TODO change to 'num'
+    type        VARCHAR(4),
+    title       VARCHAR(1024),
     units       INTEGER,
-    -- days        VARCHAR(65) DEFAULT '', -- max is the full name of all weekdays separated by ';'
     days        text[],
     description TEXT,
     capacity    INTEGER,
@@ -124,11 +122,13 @@ CREATE TABLE enrollment (
 
 CREATE TABLE users (
     id         SERIAL       NOT NULL,
-    name       VARCHAR(255) UNIQUE NOT NULL,
-    email      VARCHAR(128) UNIQUE NOT NULL,
+    name       VARCHAR(255) NOT NULL,
+    email      VARCHAR(128) NOT NULL,
     is_admin   BOOLEAN      DEFAULT 'f',
     created_at TIMESTAMP    DEFAULT now(),
     hash       VARCHAR(72)  UNIQUE NOT NULL, -- password hash
+
+    UNIQUE(name, email),
     PRIMARY KEY(id)
 );
 

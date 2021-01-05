@@ -1,11 +1,18 @@
 package users
 
 import (
+	"database/sql"
 	"errors"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 	"golang.org/x/crypto/bcrypt"
+)
+
+var (
+	// ErrUserNotFound is returned when the user does not
+	// exists or was not found given the search parameters.
+	ErrUserNotFound = errors.New("user not found")
 )
 
 // User is a user model
@@ -26,11 +33,21 @@ func Create(db *sqlx.DB, u *User, pw string) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.NamedExec(`
+	query, args, err := db.BindNamed(`
 	  INSERT INTO
 		users (name, email, is_admin, hash)
-	  VALUES (:name, :email, :is_admin, :hash)`, u)
-	return err
+	  VALUES (:name, :email, :is_admin, :hash)
+	  RETURNING *`, u)
+	if err != nil {
+		return err
+	}
+	return db.QueryRowx(query, args...).StructScan(u)
+}
+
+// Delete a user
+func Delete(db *sqlx.DB, u User) error {
+	u.db = db
+	return u.Delete()
 }
 
 // GetUserByID will get a user from the database by id
@@ -47,8 +64,7 @@ func GetUserByName(db *sqlx.DB, name string) (*User, error) {
 
 func getUser(db *sqlx.DB, query string, cond interface{}) (*User, error) {
 	u := &User{}
-	row := db.QueryRowx(query, cond)
-	err := row.StructScan(u)
+	err := db.QueryRowx(query, cond).StructScan(u)
 	if err != nil {
 		return nil, err
 	}
@@ -67,10 +83,29 @@ var (
 
 // Delete will delete the user
 func (u *User) Delete() (err error) {
+	var (
+		query string
+		res   sql.Result
+	)
 	if u.Email == "" {
-		_, err = u.db.NamedExec(deleteUserBaseQuery, u)
+		if u.Name == "" {
+			query = "DELETE FROM users where id = :id"
+		} else {
+			query = deleteUserBaseQuery
+		}
 	} else {
-		_, err = u.db.NamedExec(deleteUserWithEmail, u)
+		query = deleteUserWithEmail
+	}
+	res, err = u.db.NamedExec(query, u)
+	if err != nil {
+		return err
+	}
+	deleted, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if deleted == 0 {
+		return ErrUserNotFound
 	}
 	return err
 }
@@ -89,7 +124,8 @@ func (u *User) Save() error {
 		  name = :name,
 		  email = :email,
 		  is_admin = :is_admin,
-		  hash = :hash`,
+		  hash = :hash
+		WHERE id = :id`,
 		u,
 	)
 	return err
