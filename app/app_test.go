@@ -13,33 +13,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
-	"github.com/lib/pq"
 	"github.com/mercedtime/api/db/models"
 	"github.com/mercedtime/api/users"
 )
 
 func Test(t *testing.T) {
-	a := testApp(t)
-	defer a.Close()
-	// stmt, err := a.DB.PrepareNamed(pq.CopyIn("testing", "a", "b", "c"))
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
-	// fmt.Println(pq.CopyIn("testing", "a", "b", "c"))
-	rows, err := a.DB.Query(`
-  SELECT array_agg(aux) FROM aux
-   WHERE aux.course_crn != 0
-GROUP BY aux.course_crn`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for rows.Next() {
-		var a []models.SubCourse
-		if err = rows.Scan(pq.Array(&a)); err != nil {
-			t.Fatal(err)
-		}
-		fmt.Println(a)
-	}
 }
 
 func testConfig() *Config {
@@ -234,53 +212,79 @@ func TestPostUser(t *testing.T) {
 	ts := httptest.NewServer(a.Engine)
 	defer a.Close()
 	defer ts.Close()
-	resp, err := ts.Client().Post(ts.URL+"/user", "application/json", strings.NewReader(`
-		{"name":"testuser"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 400 {
-		t.Error("wrong status code")
-	}
-	m := make(map[string]interface{})
-	if err = json.NewDecoder(resp.Body).Decode(&m); err != nil {
-		t.Fatal(err)
-	}
-
-	resp, err = ts.Client().Post(ts.URL+"/user", "application/json", strings.NewReader(`
-		{"name":"testuser","email":"test@test.com","password":"password1"}`))
-	if err != nil {
-		t.Error(err)
-	}
-	u, err := a.GetUser(users.User{Name: "testuser", Email: "test@test.com"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	u, err = a.GetUser(users.User{ID: u.ID})
-	if err != nil {
-		t.Error(err)
-	}
-	if _, err = a.GetUser(users.User{}); err == nil {
-		t.Error("exptected an error from getting an empty user type")
-	}
 
 	url, err := url.Parse(ts.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	url.Path = fmt.Sprintf("/user/%d", u.ID)
-	resp, err = ts.Client().Do(&http.Request{
-		Method: "DELETE",
-		Proto:  "HTTP/1.1",
-		URL:    url,
-	})
-	if err != nil {
-		t.Error(err)
+
+	for _, tst := range []struct {
+		Path string
+		Data string
+		Code int
+
+		Name, Password, Email string
+	}{
+		{Path: "/user", Data: `{"name":"testuser"}`, Code: 400},
+		{Path: "/user", Data: `{"name":"testuser","email":"test@test.com","password":"password1"}`, Code: 201},
+		{Path: "/user", Name: "testuser", Email: "test@test.com", Password: "password2", Code: 201},
+	} {
+		if tst.Data == "" {
+			tst.Data = fmt.Sprintf(`{"name":"%s","email":"%s","password":"%s"}`, tst.Name, tst.Email, tst.Password)
+		}
+		resp, err := ts.Client().Post(ts.URL+tst.Path, "application/json", strings.NewReader(tst.Data))
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != tst.Code {
+			t.Errorf("expected status %d; got %d", tst.Code, resp.StatusCode)
+			continue
+		}
+		if tst.Code >= 300 {
+			continue
+		}
+		var (
+			u    users.User
+			user *users.User
+		)
+		if err = json.NewDecoder(resp.Body).Decode(&u); err != nil {
+			t.Error(err)
+			continue
+		}
+		if tst.Name == "" || tst.Email == "" {
+			goto Cleanup
+		}
+
+		user, err = a.GetUser(users.User{Name: tst.Name, Email: tst.Email})
+		if err != nil {
+			t.Error(err)
+		}
+		if user.Name != u.Name {
+			t.Errorf("username response differs from database username; database: %s, response: %s", user.Name, u.Name)
+		}
+		user, err = a.GetUser(users.User{ID: u.ID})
+		if err != nil {
+			t.Error(err)
+		}
+	Cleanup:
+		url.Path = fmt.Sprintf("/user/%d", u.ID)
+		resp, err = ts.Client().Do(&http.Request{
+			Method: "DELETE",
+			Proto:  "HTTP/1.1",
+			URL:    url,
+		})
+		if err != nil {
+			t.Error(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Errorf("did not delete user; %s", resp.Status)
+		}
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		t.Errorf("did not delete user; %s", resp.Status)
+	if _, err := a.GetUser(users.User{}); err == nil {
+		t.Error("exptected an error from getting an empty user type")
 	}
 }
 

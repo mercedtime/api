@@ -9,12 +9,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var (
-	// ErrUserNotFound is returned when the user does not
-	// exists or was not found given the search parameters.
-	ErrUserNotFound = errors.New("user not found")
-)
-
 // User is a user model
 type User struct {
 	ID        int       `db:"id" json:"id"`
@@ -32,6 +26,9 @@ func Create(db *sqlx.DB, u *User, pw string) error {
 	err := u.setPassword(pw)
 	if err != nil {
 		return err
+	}
+	if u.Name == "" && u.Email == "" {
+		return ErrInvalidUser
 	}
 	query, args, err := db.BindNamed(`
 	  INSERT INTO

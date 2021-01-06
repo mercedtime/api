@@ -5,6 +5,7 @@ go 1.15
 require (
 	github.com/99designs/gqlgen v0.13.0
 	github.com/appleboy/gin-jwt/v2 v2.6.4
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/doug-martin/goqu/v9 v9.10.0
 	github.com/gin-gonic/gin v1.6.3
 	github.com/harrybrwn/config v0.1.1

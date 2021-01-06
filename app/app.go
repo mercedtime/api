@@ -159,6 +159,22 @@ func (a *App) NewJWTAuth() (*ginjwt.GinJWTMiddleware, error) {
 				Msg:    message,
 			})
 		},
+		LoginResponse: func(c *gin.Context, code int, token string, expire time.Time) {
+			var (
+				resp = gin.H{
+					"code":   code,
+					"token":  token,
+					"expire": expire.Format(time.RFC3339),
+				}
+			)
+			if u, ok := c.Get("new-user"); ok {
+				resp["code"] = http.StatusCreated
+				resp["user"] = u
+				c.JSON(http.StatusCreated, resp)
+			} else {
+				c.JSON(http.StatusOK, resp)
+			}
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -167,8 +183,13 @@ func (a *App) NewJWTAuth() (*ginjwt.GinJWTMiddleware, error) {
 }
 
 func (a *App) authenticate(c *gin.Context) (interface{}, error) {
+	newuser, ok := c.Get("new-user")
+	if ok && newuser != nil {
+		return newuser, nil
+	}
+
 	type login struct {
-		Username string `form:"username" json:"username" binding:"required"`
+		Name     string `form:"name" json:"name" binding:"required"`
 		Password string `form:"password" json:"password" binding:"required"`
 	}
 	var l login
@@ -176,7 +197,7 @@ func (a *App) authenticate(c *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginjwt.ErrMissingLoginValues
 	}
-	u, err := users.GetUserByName(a.DB, l.Username)
+	u, err := users.GetUserByName(a.DB, l.Name)
 	if err != nil {
 		return nil, ginjwt.ErrFailedAuthentication
 	}
