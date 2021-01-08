@@ -18,9 +18,6 @@ var (
 )
 
 func Test(t *testing.T) {
-	// println("hello")
-	// s := pq.CopyIn("course", "crn", "subject")
-	// fmt.Println(s)
 }
 
 func testSchedule(t *testing.T) ucm.Schedule {

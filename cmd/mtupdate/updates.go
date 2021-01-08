@@ -129,8 +129,9 @@ func insertNew(target, tmp string, tx *sql.Tx, cols ...string) error {
 		tmpl := `
 	  INSERT INTO %[1]s (
 		%[3]s
+		,updated_at
 	  )
-	  SELECT %[3]s FROM %[2]s tmp
+	  SELECT %[3]s, now() FROM %[2]s tmp
 	  WHERE NOT EXISTS (
 	    SELECT * FROM %[1]s c
 	    WHERE c.crn = tmp.crn
@@ -310,15 +311,12 @@ func updateCourseTable(db *sqlx.DB, courses []*catalog.Entry) (err error) {
 	}()
 
 	cols := []string{
-		"crn", "subject",
-		"course_num", "type",
-		"title", "units",
-		"days", "description",
-		"capacity", "enrolled",
-		"remaining", "year",
-		"term_id",
+		"subject", "course_num", "type", "title", "units", "days",
+		"description", "capacity", "enrolled", "remaining", "year", "term_id",
 	}
-	stmt, err := tx.Prepare(pq.CopyIn(tmpTable, cols...))
+	tmpTableCols := append([]string{"crn"}, cols...)
+
+	stmt, err := tx.Prepare(pq.CopyIn(tmpTable, tmpTableCols...))
 	if err != nil {
 		return errors.Wrap(err, "could not create prepared statment")
 	}
@@ -338,7 +336,7 @@ func updateCourseTable(db *sqlx.DB, courses []*catalog.Entry) (err error) {
 	if err = stmt.Close(); err != nil {
 		return err
 	}
-	if err = insertNew(target, tmpTable, tx.Tx, cols...); err != nil {
+	if err = insertNew(target, tmpTable, tx.Tx, tmpTableCols...); err != nil {
 		return errors.Wrap(err, "could not insert new values from tmp course table")
 	}
 
@@ -347,17 +345,7 @@ func updateCourseTable(db *sqlx.DB, courses []*catalog.Entry) (err error) {
 		Target:     target,
 		Tmp:        tmpTable,
 		SetUpdated: true,
-		Vars: []string{
-			"subject",
-			"course_num",
-			"type",
-			"units",
-			"days",
-			"title",
-			"description", "capacity",
-			"enrolled", "remaining",
-			"year", "term_id",
-		},
+		Vars:       cols,
 	})
 	if err != nil {
 		return errors.Wrap(err, "could not generate update query")
@@ -454,20 +442,32 @@ func updateLabsTable(
 	if err != nil {
 		return err
 	}
-	if err = insertNew(target, tmpTable, tx); err != nil {
+	cols := []string{
+		"course_crn",
+		"section",
+		"start_time",
+		"end_time",
+		"building_room",
+		"instructor_id"}
+
+	newcols := append([]string{"crn"}, cols...)
+	if err = insertNew(target, tmpTable, tx, newcols...); err != nil {
 		return err
 	}
+	// r, err := tx.Query(fmt.Sprintf("SELECT * FROM %s where", tmpTable))
+	// if err != nil {
+	// 	log.Println(err)
+	// 	return err
+	// }
+	// if err = printQueryRows(r); err != nil {
+	// 	log.Println(err)
+	// }
 
 	q, err := updatequery(genquery{
 		Target:     target,
 		Tmp:        tmpTable,
 		SetUpdated: true,
-		Vars: []string{
-			"section",
-			"start_time",
-			"end_time",
-			"building_room",
-			"instructor_id"},
+		Vars:       cols,
 	})
 	if err != nil {
 		return err
@@ -480,13 +480,7 @@ func updateLabsTable(
 }
 
 func updateInstructorsTable(table string, db *sql.DB, instructors []interface{}) (err error) {
-	var (
-		tmpTable = "_tmp_" + table
-		// rows     = make([]interface{}, 0, len(instructors))
-	)
-	// for _, inst := range instructors {
-	// 	rows = append(rows, inst)
-	// }
+	var tmpTable = "_tmp_" + table
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
 		Isolation: sql.LevelDefault,
 		ReadOnly:  false,

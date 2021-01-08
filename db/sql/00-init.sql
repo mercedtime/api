@@ -87,7 +87,7 @@ CREATE TABLE aux (
     end_time      TIMESTAMPTZ,
     building_room TEXT,
     instructor_id BIGINT, -- move to catalog
-    updated_at   TIMESTAMPTZ DEFAULT now(),
+    updated_at   TIMESTAMPTZ DEFAULT now() NOT NULL,
 
     FOREIGN KEY (instructor_id) REFERENCES instructor (id),
     PRIMARY KEY (crn),

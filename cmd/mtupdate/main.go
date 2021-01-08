@@ -93,6 +93,7 @@ func main() {
 		log.Fatal("nothing to be done. use '-db' or '-csv' or '--enrollment-only'")
 	}
 
+	// ucm.SetHTTPClient(http.Client{Timeout: time.Second * 2})
 	var out io.Writer = os.Stdout
 	sch, err := ucm.NewSchedule(ucm.ScheduleConfig{
 		Year:    conf.Year,
@@ -432,12 +433,6 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Entry, error
 		result = make([]*catalog.Entry, 0, len(courses))
 	)
 	go func() {
-		// Convert the course list to
-		// a channel in the background
-		for _, c := range courses {
-			ch <- c
-		}
-		close(ch)
 	}()
 
 	// The last worker will not finish until
@@ -455,8 +450,7 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Entry, error
 			for c := range ch {
 				info, err := c.Info()
 				if err != nil {
-					log.Println("could not get course description:", err)
-					log.Printf("setting description as \"%s\"\n", info)
+					log.Println("could not get course description:", err, "skipping...")
 					errs <- err
 					continue
 				}
@@ -480,13 +474,23 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Entry, error
 			mu.Unlock()
 		}(i)
 	}
-	wg.Wait()
+	go func() {
+		// Convert the course list to
+		// a channel in the background
+		for _, c := range courses {
+			ch <- c
+		}
+		close(ch)
+		// Wait for all the workers to
+		// finish before closing the
+		// error channel.
+		wg.Wait()
+		close(errs)
+	}()
 
-	// Close the error channel and drain it
-	close(errs)
 	var err error
 	for e := range errs {
-		if err == nil && e != nil {
+		if e != nil && err == nil {
 			err = e
 		}
 	}
