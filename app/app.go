@@ -15,8 +15,6 @@ import (
 	_ "github.com/lib/pq" // app package relies on pq for postgres
 )
 
-//go:generate go run github.com/99designs/gqlgen
-
 // App is the main app
 type App struct {
 	DB        *sqlx.DB

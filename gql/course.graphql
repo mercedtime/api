@@ -1,18 +1,3 @@
-type Query {
-  courses(
-    limit: Int,
-    offset: Int,
-    subject: String
-  ): [Course!]!
-  catalog(
-    limit: Int,
-    offset: Int,
-    subject: String
-  ): [Course!]
-  course(id: Int!): Course
-  subjects: [Subject!]!
-}
-
 scalar Date
 
 type Course {
@@ -45,20 +30,6 @@ type SubCourse {
   updated_at: Date
   enrolled: Int
   days: [String!]
-}
-
-type CourseBlueprint {
-  subject: String
-  course_num: Int
-  title: String
-  min_units: Int
-  max_units: Int
-  enrolled: Int
-  capacity: Int
-  percent: Float!
-  crns: [Int!]
-  ids: [Int!]
-  count: Int
 }
 
 """Subject is a school subject, like math or biology"""

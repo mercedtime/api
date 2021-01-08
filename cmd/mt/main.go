@@ -82,8 +82,6 @@ func run() error {
 
 	r.POST("/graphql", gql.Handler(a.DB))
 	r.GET("/graphql/playground", gql.Playground("/graphql"))
-	// r.POST("/graphql", a.GraphQLHander())
-	// r.GET("/graphql/playground", a.GraphQLPlayground("/graphql"))
 
 	v1.OPTIONS("/auth/login", func(c *gin.Context) { c.Status(204) })
 	v1.POST("/auth/login", auth.LoginHandler)

@@ -24,7 +24,7 @@ RUN go mod download
 COPY . /app/src
 WORKDIR /app/src
 
-RUN go generate ./app
+RUN go generate ./gql
 RUN CGO_ENABLED=0 go build -o /app/bin/mtupdate ./cmd/mtupdate
 RUN CGO_ENABLED=0 go build -o /app/bin/mt ./cmd/mt
 

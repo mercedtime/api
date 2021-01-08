@@ -1,0 +1,13 @@
+type CourseBlueprint {
+  subject: String
+  course_num: Int
+  title: String
+  min_units: Int
+  max_units: Int
+  enrolled: Int
+  capacity: Int
+  percent: Float!
+  crns: [Int!]
+  ids: [Int!]
+  count: Int
+}

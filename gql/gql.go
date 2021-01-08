@@ -1,6 +1,7 @@
 package gql
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -59,7 +60,13 @@ func pqArrToIntArr(a pq.Int32Array) []int {
 	return res
 }
 
-func resolveCourses(db *sqlx.DB, limit *int, offset *int, subject *string) ([]*catalog.Course, error) {
+func resolveCourses(
+	ctx context.Context,
+	db *sqlx.DB,
+	limit *int,
+	offset *int,
+	subject *string,
+) ([]*catalog.Course, error) {
 	var (
 		resp = make([]*catalog.Course, 0, 500)
 		q    = `SELECT * FROM course`
@@ -81,7 +88,7 @@ func resolveCourses(db *sqlx.DB, limit *int, offset *int, subject *string) ([]*c
 		c++
 		args = append(args, *offset)
 	}
-	err := db.Select(&resp, q, args...)
+	err := db.SelectContext(ctx, &resp, q, args...)
 	if err != nil {
 		log.Println(err)
 		return nil, err
@@ -89,7 +96,13 @@ func resolveCourses(db *sqlx.DB, limit *int, offset *int, subject *string) ([]*c
 	return resp, nil
 }
 
-func resolveCatalog(db *sqlx.DB, limit *int, offset *int, subject *string) ([]*catalog.Course, error) {
+func resolveCatalog(
+	ctx context.Context,
+	db *sqlx.DB,
+	limit *int,
+	offset *int,
+	subject *string,
+) ([]*catalog.Course, error) {
 	var (
 		resp = make(catalog.Catalog, 0, 500)
 		q    = `SELECT * FROM catalog where type in ('LECT','SEM','STDO')`
@@ -111,10 +124,8 @@ func resolveCatalog(db *sqlx.DB, limit *int, offset *int, subject *string) ([]*c
 		c++
 		args = append(args, *offset)
 	}
-	log.Println(q)
-	err := db.Select(&resp, q, args...)
+	err := db.SelectContext(ctx, &resp, q, args...)
 	if err != nil {
-		log.Println(err)
 		return nil, err
 	}
 	return resp, nil

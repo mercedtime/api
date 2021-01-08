@@ -1,0 +1,21 @@
+type Query {
+  courses(
+    limit: Int,
+    offset: Int,
+    subject: String
+  ): [Course!]!
+
+  blueprints(
+    limit: Int,
+    offset: Int,
+    subject: String
+  ): [CourseBlueprint!]!
+
+  catalog(
+    limit: Int,
+    offset: Int,
+    subject: String
+  ): [Course!]
+  course(id: Int!): Course
+  subjects: [Subject!]!
+}
