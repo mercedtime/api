@@ -6,12 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/99designs/gqlgen/graphql/handler"
-	"github.com/99designs/gqlgen/graphql/playground"
 	ginjwt "github.com/appleboy/gin-jwt/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
-	"github.com/mercedtime/api/app/internal/gql"
 	"github.com/mercedtime/api/db/models"
 	"github.com/mercedtime/api/users"
 
@@ -60,24 +57,6 @@ func (a *App) GetInstructor(id interface{}) (*models.Instructor, error) {
 		return nil, ErrStatus(500, "could not get instructor")
 	}
 	return &inst, nil
-}
-
-// GraphQLHander returns a graphql hander function
-func (a *App) GraphQLHander() func(c *gin.Context) {
-	h := handler.NewDefaultServer(gql.NewExecutableSchema(
-		gql.Config{Resolvers: &Resolver{a}},
-	))
-	return func(c *gin.Context) {
-		h.ServeHTTP(c.Writer, c.Request)
-	}
-}
-
-// GraphQLPlayground returns a hander func for the graphql playground
-func (a *App) GraphQLPlayground(endpoint string) gin.HandlerFunc {
-	h := playground.Handler("GraphQL", endpoint)
-	return func(c *gin.Context) {
-		h.ServeHTTP(c.Writer, c.Request)
-	}
 }
 
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {

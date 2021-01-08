@@ -12,7 +12,6 @@ import (
 	_ "github.com/doug-martin/goqu/v9/dialect/postgres" // need postgres dialect
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
-	"github.com/lib/pq"
 	"github.com/mercedtime/api/catalog"
 	"github.com/mercedtime/api/db/models"
 )
@@ -54,9 +53,9 @@ func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 			args   = make([]interface{}, 0, 5)
 			argc   = 1
 			result = make(catalog.Catalog, 0, 32)
-			params = PageParams{}
+			p      = PageParams{}
 		)
-		if err := c.BindQuery(&params); err != nil {
+		if err := c.BindQuery(&p); err != nil {
 			c.JSON(500, &Error{err.Error(), 500})
 			return
 		}
@@ -81,14 +80,14 @@ func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 			}
 		}
 
-		if params.Limit != nil {
+		if p.Limit != nil {
 			q += fmt.Sprintf(" LIMIT $%d", argc)
-			args = append(args, params.Limit)
+			args = append(args, p.Limit)
 			argc++
 		}
-		if params.Offset != nil {
+		if p.Offset != nil {
 			q += fmt.Sprintf(" OFFSET $%d", argc)
-			args = append(args, params.Offset)
+			args = append(args, p.Offset)
 			argc++
 		}
 
@@ -99,23 +98,6 @@ func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 		}
 		c.JSON(200, result)
 	}
-}
-
-// CourseBlueprint is an overview of all of the instances of one course.
-// It tells what the course subject and number are and contains a list
-// of IDs that point to spesific instances of the course.
-type CourseBlueprint struct {
-	Subject   string        `db:"subject" json:"subject"`
-	CourseNum int           `db:"course_num" json:"course_num"`
-	Title     string        `db:"title" json:"title"`
-	MinUnits  int           `db:"min_units" json:"min_units"`
-	MaxUnits  int           `db:"max_units" json:"max_units"`
-	Enrolled  int           `db:"enrolled" json:"enrolled"`
-	Capacity  int           `db:"capacity" json:"capacity"`
-	Percent   float32       `db:"percent" json:"percent"`
-	CRNs      pq.Int32Array `db:"crns" json:"crns"`
-	IDs       pq.Int32Array `db:"ids" json:"ids"`
-	Count     int           `db:"count" json:"count"`
 }
 
 func (a *App) getCourseBluprints(c *gin.Context) {
@@ -147,7 +129,7 @@ func (a *App) getCourseBluprints(c *gin.Context) {
 		err    error
 		where  string
 		args   = make([]interface{}, 0, 2)
-		resp   = make([]CourseBlueprint, 0, 350)
+		resp   = make([]catalog.CourseBlueprint, 0, 350)
 		params struct {
 			PageParams
 			SemesterParams

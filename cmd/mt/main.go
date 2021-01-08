@@ -13,6 +13,7 @@ import (
 	"github.com/harrybrwn/config"
 	"github.com/jmoiron/sqlx"
 	"github.com/mercedtime/api/app"
+	"github.com/mercedtime/api/gql"
 	"github.com/mercedtime/api/users"
 	"github.com/pkg/errors"
 )
@@ -79,8 +80,10 @@ func run() error {
 	}
 	a.RegisterRoutes(v1)
 
-	r.POST("/graphql", a.GraphQLHander())
-	r.GET("/graphql/playground", a.GraphQLPlayground("/graphql"))
+	r.POST("/graphql", gql.Handler(a.DB))
+	r.GET("/graphql/playground", gql.Playground("/graphql"))
+	// r.POST("/graphql", a.GraphQLHander())
+	// r.GET("/graphql/playground", a.GraphQLPlayground("/graphql"))
 
 	v1.OPTIONS("/auth/login", func(c *gin.Context) { c.Status(204) })
 	v1.POST("/auth/login", auth.LoginHandler)

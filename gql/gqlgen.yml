@@ -1,18 +1,17 @@
 schema:
   - '../*.graphql'
   - '*.graphql'
-  - 'gql/*.graphql'
 
 exec:
-  filename: internal/gql/generated.go
-  package: gql
+  filename: internal/graph/generated.go
+  package: graph
 model:
-  filename: internal/gql/models.go
-  package: gql
+  filename: internal/graph/models.go
+  package: graph
 resolver:
   layout: follow-schema
   dir: .
-  package: app
+  package: gql
   filename_template: "{name}.resolvers.go"
 
 struct_tag: db
@@ -22,3 +21,5 @@ models:
     model: github.com/mercedtime/api/catalog.Course
   SubCourse:
     model: github.com/mercedtime/api/catalog.SubCourse
+  CourseBlueprint:
+    model: github.com/mercedtime/api/catalog.CourseBlueprint
