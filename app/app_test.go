@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
@@ -18,6 +20,18 @@ import (
 )
 
 func Test(t *testing.T) {
+	a := testApp(t)
+	rows, err := a.DB.Query("SELECT updated_at FROM aux")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		tm := time.Time{}
+		if err = rows.Scan(&tm); err != nil {
+			t.Fatal(err)
+		}
+		fmt.Println(tm)
+	}
 }
 
 func testConfig() *Config {
@@ -55,6 +69,7 @@ func TestListEndpoints(t *testing.T) {
 		Limit, Offset int
 		Code          int
 		Query         url.Values
+		Subject       string
 	}{
 		{Path: "/lectures", Limit: 10, Offset: 12, Code: 200},
 		{Path: "/lectures", Query: url.Values{"subject": {"bio"}}, Code: 200},
@@ -71,13 +86,13 @@ func TestListEndpoints(t *testing.T) {
 		{Path: "/instructors", Limit: 2, Offset: 12, Code: 200},
 		{Path: "/instructors", Limit: 2, Offset: -1, Code: 400},
 		{Path: "/courses", Limit: 30, Offset: 2, Code: 200},
-		{Path: "/courses", Query: url.Values{"subject": {"cse"}}, Code: 200},
+		{Path: "/courses", Subject: "cse", Code: 200},
 		{Path: "/courses", Query: url.Values{
 			"subject": {"cse"},
 			"year":    {"2021"},
 			"term":    {"spring"},
 			"limit":   {"53"},
-		}, Code: 200},
+		}, /* Subject: "cse",*/ Code: 200},
 		{Path: "/catalog/2021/spring", Code: 200, Limit: 23},
 		{Path: "/catalog/2021/spring", Code: 200, Query: url.Values{"subject": {"anth"}, "limit": {"2"}}},
 		{Path: "/catalog/2020/fall", Code: 200, Limit: 3, Offset: 5},
@@ -98,22 +113,41 @@ func TestListEndpoints(t *testing.T) {
 			tst.Query = url.Values{}
 			tst.Query.Set("offset", strconv.FormatInt(int64(tst.Offset), 10))
 			tst.Query.Set("limit", strconv.FormatInt(int64(tst.Limit), 10))
+			if tst.Subject != "" {
+				tst.Query.Set("subject", tst.Subject)
+			}
 		}
 		r.URL.RawQuery = tst.Query.Encode()
 		w := httptest.NewRecorder()
 		app.ServeHTTP(w, r)
 
 		if w.Code != tst.Code {
-			t.Errorf("%s: bad status code, got %d, want %d", r.URL.String(), w.Code, tst.Code)
+			t.Errorf("%s: bad status code, got %d, want %d", r.URL, w.Code, tst.Code)
+			t.Log(w.Body.String())
 			continue
 		}
 		if tst.Code >= 300 {
 			continue // dont need to check the result
 		}
-		list := make([]interface{}, 0)
+		list := make([]map[string]interface{}, 0)
 		if err := json.NewDecoder(w.Body).Decode(&list); err != nil {
 			t.Error(err)
 			continue
+		}
+		if tst.Subject != "" {
+			for _, item := range list {
+				for k, v := range item {
+					if k != "subject" {
+						fmt.Println(k, v)
+						continue
+					}
+					if strings.ToLower(v.(string)) != strings.ToLower(tst.Subject) {
+						t.Errorf("expected subject %s, got %s from %s", tst.Subject, v, r.URL)
+					} else {
+						fmt.Println(v, tst.Subject)
+					}
+				}
+			}
 		}
 		if checkLim && len(list) != tst.Limit {
 			t.Errorf("expected response of length %d, got %d", tst.Limit, len(list))
@@ -304,6 +338,8 @@ func TestListEndpointsServer(t *testing.T) {
 			t.Error(err)
 		}
 		if resp.StatusCode != 200 {
+			b, _ := ioutil.ReadAll(resp.Body)
+			fmt.Printf("%s\n", b)
 			t.Errorf("\"%s\" from %s", resp.Status, e)
 		}
 		if err = resp.Body.Close(); err != nil {

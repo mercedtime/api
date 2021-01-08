@@ -2,7 +2,6 @@ package app
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
 	"reflect"
@@ -13,6 +12,7 @@ import (
 	_ "github.com/doug-martin/goqu/v9/dialect/postgres" // need postgres dialect
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 	"github.com/mercedtime/api/catalog"
 	"github.com/mercedtime/api/db/models"
 )
@@ -33,27 +33,6 @@ func listParamsMiddleware(c *gin.Context) {
 		c.Set(key, uint(u))
 	}
 	c.Next()
-}
-
-type (
-	// SubCourseList is a list of SubCourses that maintains
-	// interoperability with postgresql json blobs.
-	subCourseList []struct {
-		models.SubCourse
-
-		Enrolled int              `json:"enrolled"`
-		Days     catalog.Weekdays `json:"days"`
-	}
-)
-
-// Scan will convert the list of subcourses from json
-// to a serialized struct slice.
-func (sc *subCourseList) Scan(val interface{}) error {
-	b, ok := val.([]byte)
-	if ok {
-		return json.Unmarshal(b, sc)
-	}
-	return nil
 }
 
 func getCatalog(db *sqlx.DB) gin.HandlerFunc {
@@ -90,6 +69,18 @@ func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 			}
 		}
 
+		order, ok := c.GetQuery("order")
+		if ok {
+			switch order {
+			case "updated_at":
+				q += " ORDER BY updated_at DESC"
+			case "capacity":
+				q += " ORDER BY capacity ASC"
+			case "enrolled":
+				q += " ORDER BY enrolled ASC"
+			}
+		}
+
 		if params.Limit != nil {
 			q += fmt.Sprintf(" LIMIT $%d", argc)
 			args = append(args, params.Limit)
@@ -108,6 +99,88 @@ func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 		}
 		c.JSON(200, result)
 	}
+}
+
+// CourseBlueprint is an overview of all of the instances of one course.
+// It tells what the course subject and number are and contains a list
+// of IDs that point to spesific instances of the course.
+type CourseBlueprint struct {
+	Subject   string        `db:"subject" json:"subject"`
+	CourseNum int           `db:"course_num" json:"course_num"`
+	Title     string        `db:"title" json:"title"`
+	MinUnits  int           `db:"min_units" json:"min_units"`
+	MaxUnits  int           `db:"max_units" json:"max_units"`
+	Enrolled  int           `db:"enrolled" json:"enrolled"`
+	Capacity  int           `db:"capacity" json:"capacity"`
+	Percent   float32       `db:"percent" json:"percent"`
+	CRNs      pq.Int32Array `db:"crns" json:"crns"`
+	IDs       pq.Int32Array `db:"ids" json:"ids"`
+	Count     int           `db:"count" json:"count"`
+}
+
+func (a *App) getCourseBluprints(c *gin.Context) {
+	var (
+		query = `
+		SELECT
+			  subject,
+			  course_num,
+			  (array_agg(title))[1] AS title,
+			  min(units) AS min_units,
+			  max(units) AS max_units,
+			  sum(c.enrolled) AS enrolled,
+			  sum(c.capacity) AS capacity,
+			  sum(c.enrolled)::float / sum(c.capacity)::float AS percent,
+			  array_agg(c.crn) AS crns,
+			  array_agg(c.id) AS ids,
+			  count(*) AS count
+		  FROM
+			  course c
+		 WHERE 0 = 0
+		  	   %s
+	  GROUP BY
+		      subject,
+		      course_num
+	  ORDER BY
+		      subject ASC,
+			  course_num ASC
+	  LIMIT $%d OFFSET $%d`
+		err    error
+		where  string
+		args   = make([]interface{}, 0, 2)
+		resp   = make([]CourseBlueprint, 0, 350)
+		params struct {
+			PageParams
+			SemesterParams
+			Units int `query:"units" form:"units"`
+		}
+	)
+
+	if params.Subject != "" {
+		where += "AND subject = $1 "
+		args = append(args, strings.ToUpper(params.Subject))
+	}
+	if params.Term != "" {
+		where += "AND term_id = $2 "
+		args = append(args, getTermID(params.Term))
+	}
+	if params.Year != 0 {
+		where += "AND year = $3 "
+		args = append(args, params.Year)
+	}
+	if err = c.BindQuery(&params); err != nil {
+		senderr(c, err, 500)
+		return
+	}
+	l := len(args) + 1
+	err = a.DB.Select(
+		&resp, fmt.Sprintf(query, where, l, l+1),
+		append(args, params.Limit, params.Offset)...,
+	)
+	if err != nil {
+		senderr(c, err, 500)
+		return
+	}
+	c.JSON(200, resp)
 }
 
 var listCoursesQuery = `select * from course `

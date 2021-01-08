@@ -22,7 +22,7 @@ func (a *App) RegisterRoutes(g *gin.RouterGroup) {
 	lists.GET("/labs", ListLabs(a.DB))
 	lists.GET("/discussions", ListDiscussions(a.DB))
 	lists.GET("/instructors", ListInstructors(a.DB))
-	g.GET("/courses", termyearMiddle, a.listCourses)
+	g.GET("/courses", a.getCourseBluprints)
 	lists.GET("/catalog/:year/:term", termyearMiddle, getCatalog(a.DB))
 
 	g.OPTIONS("/user", func(c *gin.Context) { c.Status(204) })
