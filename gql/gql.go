@@ -104,8 +104,9 @@ func resolveCatalog(
 	subject *string,
 ) ([]*catalog.Course, error) {
 	var (
+		q = `SELECT * FROM catalog
+				where type in ('LECT','SEM','STDO')`
 		resp = make(catalog.Catalog, 0, 500)
-		q    = `SELECT * FROM catalog where type in ('LECT','SEM','STDO')`
 		c    = 1
 		args = make([]interface{}, 0, 2)
 	)

@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -32,6 +33,66 @@ type Entry struct {
 	UpdatedAt   time.Time `db:"updated_at" json:"updated_at" csv:"-" goqu:"skipupdate,skipinsert"`
 	Year        int       `db:"year" json:"year" csv:"year"`
 	TermID      int       `db:"term_id" json:"term_id" csv:"term_id"`
+}
+
+func genCatalogQuery(page PageParams, order string, sem SemesterParams) (string, []interface{}) {
+	var (
+		base = `SELECT * FROM catalog
+				where type in ('LECT','SEM','STDO')`
+		c    = 1
+		args = make([]interface{}, 0, 2)
+	)
+	if sem.Subject != "" {
+		base += fmt.Sprintf(" AND subject = $%d", c)
+		c++
+		args = append(args, strings.ToUpper(sem.Subject))
+	}
+	if sem.Term != "" {
+		base += fmt.Sprintf(" AND term_id = $%d", c)
+		c++
+		args = append(args, GetTermID(sem.Term))
+	}
+	if sem.Year != 0 {
+		base += fmt.Sprintf(" AND year = $%d", sem.Year)
+		c++
+		args = append(args, sem.Year)
+	}
+	if order != "" {
+		switch order {
+		case "updated_at":
+			base += " ORDER BY updated_at DESC"
+		case "capacity":
+			base += " ORDER BY capacity ASC"
+		case "enrolled":
+			base += " ORDER BY enrolled ASC"
+		}
+	}
+	if page.Limit != nil {
+		base += fmt.Sprintf(" LIMIT $%d", c)
+		c++
+		args = append(args, *page.Limit)
+	}
+	if page.Offset != nil {
+		base += fmt.Sprintf(" OFFSET $%d", c)
+		c++
+		args = append(args, *page.Offset)
+	}
+	return base, args
+}
+
+// GetTermID will return the term
+// id given the term name
+func GetTermID(term string) int {
+	switch term {
+	case "spring":
+		return 1
+	case "summer":
+		return 2
+	case "fall":
+		return 3
+	default:
+		return 0
+	}
 }
 
 // SubCourseList is a list of SubCourses that maintains

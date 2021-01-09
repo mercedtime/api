@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+	"github.com/mercedtime/api/catalog"
 )
 
 // RegisterRoutes will setup all the app routes
@@ -85,21 +86,8 @@ func (a *App) availbleTerms(c *gin.Context) {
 	c.JSON(200, resp)
 }
 
-func getTermID(term string) int {
-	switch term {
-	case "spring":
-		return 1
-	case "summer":
-		return 2
-	case "fall":
-		return 3
-	default:
-		return 0
-	}
-}
-
 func setTerm(c *gin.Context, term string) {
-	id := getTermID(term)
+	id := catalog.GetTermID(term)
 	if id == 0 {
 		c.AbortWithStatusJSON(400, &Error{"invalid term", 400})
 		return
@@ -120,9 +108,9 @@ func setYear(c *gin.Context, year string) {
 func termyearMiddle(c *gin.Context) {
 	var (
 		err error
-		p   = SemesterParams{}
+		p   = catalog.SemesterParams{}
 	)
-	if err = p.bind(c); err != nil {
+	if err = p.Bind(c); err != nil {
 		c.AbortWithStatusJSON(400, &Error{
 			Msg:    "bad parameters: " + err.Error(),
 			Status: 400,

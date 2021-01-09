@@ -52,8 +52,8 @@ func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 			q      = catalogQuery
 			args   = make([]interface{}, 0, 5)
 			argc   = 1
-			result = make(catalog.Catalog, 0, 32)
-			p      = PageParams{}
+			result = make(catalog.Catalog, 0, 250)
+			p      = catalog.PageParams{}
 		)
 		if err := c.BindQuery(&p); err != nil {
 			c.JSON(500, &Error{err.Error(), 500})
@@ -131,8 +131,8 @@ func (a *App) getCourseBluprints(c *gin.Context) {
 		args   = make([]interface{}, 0, 2)
 		resp   = make([]catalog.CourseBlueprint, 0, 350)
 		params struct {
-			PageParams
-			SemesterParams
+			catalog.PageParams
+			catalog.SemesterParams
 			Units int `query:"units" form:"units"`
 		}
 	)
@@ -143,7 +143,7 @@ func (a *App) getCourseBluprints(c *gin.Context) {
 	}
 	if params.Term != "" {
 		where += "AND term_id = $2 "
-		args = append(args, getTermID(params.Term))
+		args = append(args, catalog.GetTermID(params.Term))
 	}
 	if params.Year != 0 {
 		where += "AND year = $3 "
@@ -171,8 +171,8 @@ func (a *App) listCourses(c *gin.Context) {
 	var (
 		resp = make([]catalog.Entry, 0, 500)
 		p    struct {
-			SemesterParams
-			PageParams
+			catalog.SemesterParams
+			catalog.PageParams
 		}
 	)
 
@@ -188,7 +188,7 @@ func (a *App) listCourses(c *gin.Context) {
 	).Where(
 		p.SemesterParams.Expression(),
 	)
-	stmt = p.PageParams.appendSelect(stmt)
+	stmt = p.PageParams.AppendSelect(stmt)
 	query, args, err := stmt.ToSQL()
 	if err != nil {
 		c.JSON(500, Error{Msg: "internal error"})

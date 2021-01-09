@@ -1,4 +1,4 @@
-package app
+package catalog
 
 import (
 	"fmt"
@@ -24,7 +24,8 @@ func (pp *PageParams) toExpr() goqu.Ex {
 	return ex
 }
 
-func (pp *PageParams) appendSelect(stmt *goqu.SelectDataset) *goqu.SelectDataset {
+// AppendSelect appends the parameters to a generated sql query statement
+func (pp *PageParams) AppendSelect(stmt *goqu.SelectDataset) *goqu.SelectDataset {
 	if pp.Limit != nil {
 		stmt = stmt.Limit(*pp.Limit)
 	}
@@ -72,7 +73,7 @@ func (sp *SemesterParams) toExpr() goqu.Ex {
 		ex["year"] = sp.Year
 	}
 	if sp.Term != "" {
-		if id := getTermID(sp.Term); id != 0 {
+		if id := GetTermID(sp.Term); id != 0 {
 			ex["term_id"] = id
 		}
 	}
@@ -88,7 +89,8 @@ func (sp *SemesterParams) Expression() goqu.Expression { return sp.toExpr() }
 // Clone implements the goqu.Expression interface
 func (sp *SemesterParams) Clone() goqu.Expression { return sp.toExpr() }
 
-func (sp *SemesterParams) bind(c *gin.Context) (err error) {
+// Bind will bind a request to the params
+func (sp *SemesterParams) Bind(c *gin.Context) (err error) {
 	if err = c.BindQuery(sp); err != nil {
 		return err
 	}
