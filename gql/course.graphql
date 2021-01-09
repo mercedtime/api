@@ -16,6 +16,7 @@ type Course {
   updated_at: Date
   year: Int!
   term_id: Int!
+  exam: Exam
   subcourses: [SubCourse!]
 }
 
@@ -30,6 +31,12 @@ type SubCourse {
   updated_at: Date
   enrolled: Int
   days: [String!]
+}
+
+type Exam {
+  date: Date!
+  start_time: Date
+  end_time: Date
 }
 
 """Subject is a school subject, like math or biology"""

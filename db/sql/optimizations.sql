@@ -1,8 +1,10 @@
 CREATE INDEX course_type_idx ON course (type);
 
 CREATE INDEX aux_course_crn_idx ON aux (course_crn);
-CREATE INDEX non_zero_aux_course_crn_idx
-          ON aux (course_crn) WHERE course_crn != 0;
+
+CREATE INDEX non_zero_aux_course_crn_idx ON aux (course_crn)
+WHERE
+    course_crn != 0;
 
 -- Holy bageebus this thing is fast
 --
@@ -11,7 +13,8 @@ CREATE INDEX non_zero_aux_course_crn_idx
 CREATE MATERIALIZED VIEW catalog AS
 SELECT
     c.*,
-    array_to_json(sub) AS subcourses
+    array_to_json(sub) AS subcourses,
+    row_to_json(exam) as exam
 FROM
     course c
     LEFT OUTER JOIN (
@@ -44,10 +47,12 @@ FROM
         GROUP BY
             aux.course_crn
     ) a ON c.crn = a.course_crn
+    LEFT OUTER JOIN exam on c.crn = exam.crn
 ORDER BY
     c.subject,
     c.course_num;
 
 CREATE UNIQUE INDEX ON catalog (id);
+
 -- Run this every once in a while
 --REFRESH MATERIALIZED VIEW CONCURRENTLY catalog;

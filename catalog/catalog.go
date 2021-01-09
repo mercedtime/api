@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -9,10 +10,13 @@ import (
 	"github.com/lib/pq"
 )
 
+// Catalog is the course catalog
 type Catalog []*Course
 
+// Course is a course
 type Course struct {
 	Entry
+	Exam       Exam          `db:"exam" json:"exam"`
 	Subcourses SubCourseList `db:"subcourses" json:"subcourses"`
 }
 
@@ -35,6 +39,25 @@ type Entry struct {
 	TermID      int       `db:"term_id" json:"term_id" csv:"term_id"`
 }
 
+// Exam is an exam
+type Exam struct {
+	Date      time.Time `db:"date" json:"date"`
+	StartTime time.Time `db:"start_time" json:"start_time"`
+	EndTime   time.Time `db:"end_time" json:"end_time"`
+}
+
+// Scan implements the database/sql scan interface
+func (e *Exam) Scan(v interface{}) error {
+	if v == nil {
+		return nil
+	}
+	if b, ok := v.([]byte); ok {
+		return json.Unmarshal(b, e)
+	}
+	return errors.New("could not scan object")
+}
+
+// TODO start using this for both the REST api and graphql api
 func genCatalogQuery(page PageParams, order string, sem SemesterParams) (string, []interface{}) {
 	var (
 		base = `SELECT * FROM catalog

@@ -118,12 +118,12 @@ func (a *App) getCourseBluprints(c *gin.Context) {
 		  FROM
 			  course c
 		 WHERE 0 = 0
-		  	   %s
+			  %s
 	  GROUP BY
-		      subject,
-		      course_num
+			  subject,
+			  course_num
 	  ORDER BY
-		      subject ASC,
+			  subject ASC,
 			  course_num ASC
 	  LIMIT $%d OFFSET $%d`
 		err    error

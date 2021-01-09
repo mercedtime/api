@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math/rand"
 	"sync"
 	"testing"
@@ -18,6 +19,12 @@ var (
 )
 
 func Test(t *testing.T) {
+	s := testSchedule(t)
+	bp, err := findBlueprints(s.Ordered())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(len(s), len(bp))
 }
 
 func testSchedule(t *testing.T) ucm.Schedule {
@@ -29,9 +36,9 @@ func testSchedule(t *testing.T) ucm.Schedule {
 	scheduleOnce.Do(func() {
 		rand.Seed(time.Now().Unix())
 		testingSchedule, err = ucm.NewSchedule(ucm.ScheduleConfig{
-			Year:    2021,
-			Term:    "spring",
-			Subject: subjects[rand.Intn(len(subjects))],
+			Year: 2021,
+			Term: "spring",
+			// Subject: subjects[rand.Intn(len(subjects))],
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -80,9 +87,9 @@ func TestGetCourseTable(t *testing.T) {
 	}
 }
 
-func TestGetTablesData(t *testing.T) {
+func TestPopulateTables(t *testing.T) {
 	sch := testSchedule(t)
-	tab, err := getTablesData(sch, &updateConfig{})
+	tab, err := PopulateTables(sch, &updateConfig{})
 	if err != nil {
 		t.Error(err)
 	}

@@ -27,6 +27,20 @@ func (r *courseResolver) Subcourses(ctx context.Context, obj *catalog.Course) ([
 	return sub, nil
 }
 
+func (r *examResolver) Date(ctx context.Context, obj *catalog.Exam) (string, error) {
+	return obj.Date.String(), nil
+}
+
+func (r *examResolver) StartTime(ctx context.Context, obj *catalog.Exam) (*string, error) {
+	s := obj.StartTime.String()
+	return &s, nil
+}
+
+func (r *examResolver) EndTime(ctx context.Context, obj *catalog.Exam) (*string, error) {
+	s := obj.EndTime.String()
+	return &s, nil
+}
+
 func (r *subCourseResolver) StartTime(ctx context.Context, obj *catalog.SubCourse) (*string, error) {
 	var d = obj.StartTime.String()
 	return &d, nil
@@ -49,8 +63,12 @@ func (r *subCourseResolver) Days(ctx context.Context, obj *catalog.SubCourse) ([
 // Course returns graph.CourseResolver implementation.
 func (r *Resolver) Course() graph.CourseResolver { return &courseResolver{r} }
 
+// Exam returns graph.ExamResolver implementation.
+func (r *Resolver) Exam() graph.ExamResolver { return &examResolver{r} }
+
 // SubCourse returns graph.SubCourseResolver implementation.
 func (r *Resolver) SubCourse() graph.SubCourseResolver { return &subCourseResolver{r} }
 
 type courseResolver struct{ *Resolver }
+type examResolver struct{ *Resolver }
 type subCourseResolver struct{ *Resolver }

@@ -100,7 +100,7 @@ CREATE TABLE aux (
 
 CREATE TABLE exam (
     crn        INTEGER NOT NULL,
-    date       DATE,
+    date       TIMESTAMPTZ,
     start_time TIMESTAMPTZ,
     end_time   TIMESTAMPTZ,
     PRIMARY KEY (crn)

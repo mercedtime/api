@@ -23,3 +23,5 @@ models:
     model: github.com/mercedtime/api/catalog.SubCourse
   CourseBlueprint:
     model: github.com/mercedtime/api/catalog.CourseBlueprint
+  Exam:
+    model: github.com/mercedtime/api/catalog.Exam

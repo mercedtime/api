@@ -7,28 +7,19 @@ import (
 	"io"
 	"log"
 	"os"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/agnivade/levenshtein"
 	"github.com/harrybrwn/config"
 	"github.com/harrybrwn/edu/school/ucmerced/ucm"
 	"github.com/jmoiron/sqlx"
-	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 	"github.com/mercedtime/api/app"
 	"github.com/mercedtime/api/catalog"
 	"github.com/mercedtime/api/db/models"
 	"github.com/pkg/errors"
 )
-
-/*
-TODO:
-	- Add context to the mechanism that gets course descriptions
-	  because it sometimes hanges and I have no idea why.
-  	- unify the naming conventions for activity
-*/
 
 var termcodeMap = map[string]int{
 	"spring": 1,
@@ -45,12 +36,24 @@ type updateConfig struct {
 	Logfile     string `config:"logfile" default:"mtupdate.log"`
 }
 
+func (conf *updateConfig) init() {
+	flag.StringVar(&conf.Database.Password, "password", conf.Database.Password, "give postgres a password")
+	flag.StringVar(&conf.Database.Host, "host", conf.Database.Host, "specify the database host")
+	flag.IntVar(&conf.Database.Port, "port", conf.Database.Port, "specify the database port")
+	flag.IntVar(&conf.Year, "year", conf.Year, "the year")
+	flag.StringVar(&conf.Term, "term", conf.Term, "the term")
+}
+
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	var (
-		dbOpsOnly      = false
-		csvOps         = false
-		noEnrollment   = false
-		enrollmentOnly = false
+		dbOpsOnly, csvOps            = false, false
+		noEnrollment, enrollmentOnly = false, false
 
 		conf = updateConfig{
 			Database: app.DatabaseConfig{
@@ -74,23 +77,17 @@ func main() {
 	}
 	config.ReadConfigFile() // ignore error if not there
 
-	flag.StringVar(&conf.Database.Password, "password", conf.Database.Password, "give postgres a password")
-	flag.StringVar(&conf.Database.Host, "host", conf.Database.Host, "specify the database host")
-	flag.IntVar(&conf.Database.Port, "port", conf.Database.Port, "specify the database port")
 	flag.BoolVar(&dbOpsOnly, "db", dbOpsOnly, "only perform database updates")
 	flag.BoolVar(&csvOps, "csv", csvOps, "write the tables to csv files")
 	flag.BoolVar(&enrollmentOnly, "enrollment-only", enrollmentOnly, "only updated the db with enrollmenet data")
 	flag.BoolVar(&noEnrollment, "no-enrollment", noEnrollment, "do not update the enrollment table")
-
-	flag.IntVar(&conf.Year, "year", conf.Year, "the year")
-	flag.StringVar(&conf.Term, "term", conf.Term, "the term")
-	// flag.BoolVar(&conf.SkipCourses, "skip-courses", conf.SkipCourses, "skip the courses update")
+	conf.init()
 	flag.Parse()
 
 	if !dbOpsOnly && !csvOps && !enrollmentOnly {
 		flag.Usage()
 		println("\n")
-		log.Fatal("nothing to be done. use '-db' or '-csv' or '--enrollment-only'")
+		return errors.New("nothing to be done. use '-db' or '-csv' or '--enrollment-only'")
 	}
 
 	// ucm.SetHTTPClient(http.Client{Timeout: time.Second * 2})
@@ -102,43 +99,39 @@ func main() {
 		Subject: "",
 	})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	if enrollmentOnly {
 		db, err := sqlx.Connect("postgres", conf.Database.GetDSN())
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		defer db.Close()
 		err = recordHistoricalEnrollment(
 			db.DB, conf.Year, termcodeMap[conf.Term], sch.Ordered())
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		fmt.Fprintf(out, "%d courses updated\n", sch.Len())
-		return
+		return nil
 	}
 
-	tab, err := getTablesData(sch, &conf)
+	tab, err := PopulateTables(sch, &conf)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	defer fmt.Println()
 	if dbOpsOnly {
 		db, err := sqlx.Connect("postgres", conf.Database.GetDSN())
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
-		defer func() {
-			if err = closeDB(db); err != nil {
-				log.Println("error while closing database:", err)
-			}
-		}()
+		defer closeDB(db)
 		err = updates(os.Stdout, db, tab)
 		if err != nil {
-			log.Fatal("DB Error:", err)
+			return fmt.Errorf("DB Error: %w", err)
 		}
 		if !noEnrollment {
 			err = recordHistoricalEnrollment(
@@ -146,7 +139,7 @@ func main() {
 				sch.Ordered(),
 			)
 			if err != nil {
-				log.Fatal(err)
+				return err
 			}
 		}
 		fmt.Print("db updates done ")
@@ -154,21 +147,26 @@ func main() {
 
 	if csvOps {
 		if err = writes(tab); err != nil {
-			log.Fatal("CSV Error:", err)
+			return fmt.Errorf("CSV Error: %w", err)
 		}
 		fmt.Print("csv files written ")
 	}
+	return nil
 }
 
 func closeDB(db *sqlx.DB) (err error) {
 	_, err = db.Exec("REFRESH MATERIALIZED VIEW CONCURRENTLY catalog")
+	if err != nil {
+		log.Println("could not refresh materialized view:", err)
+	}
 	if e := db.Close(); e != nil && err == nil {
 		err = e
 	}
 	return err
 }
 
-type tables struct {
+// Tables holds table data
+type Tables struct {
 	course     []*catalog.Entry
 	lectures   []*models.Lecture
 	aux        []*models.LabDisc
@@ -176,11 +174,11 @@ type tables struct {
 	instructor map[string]*models.Instructor
 }
 
-// TODO try to squash some of these helper functions into one loop
-func getTablesData(sch ucm.Schedule, conf *updateConfig) (*tables, error) {
+// PopulateTables will get table data
+func PopulateTables(sch ucm.Schedule, conf *updateConfig) (*Tables, error) {
 	var (
 		courses = sch.Ordered()
-		tab     = &tables{
+		tab     = &Tables{
 			instructor: make(map[string]*models.Instructor),
 			exam:       make([]*models.Exam, 0, 128), // 128 is arbitrary
 		}
@@ -220,10 +218,10 @@ func getTablesData(sch ucm.Schedule, conf *updateConfig) (*tables, error) {
 			})
 		}
 	}
-	return tab, tab.populate(courses, sch)
+	return tab, tab.populateLabsLectures(courses, sch)
 }
 
-func updates(w io.Writer, db *sqlx.DB, tab *tables) (err error) {
+func updates(w io.Writer, db *sqlx.DB, tab *Tables) (err error) {
 	t := time.Now()
 	fmt.Fprintf(w, "[%s] ", t.Format(time.Stamp))
 	t = time.Now()
@@ -276,7 +274,7 @@ func updates(w io.Writer, db *sqlx.DB, tab *tables) (err error) {
 	return nil
 }
 
-func writes(tab *tables) error {
+func writes(tab *Tables) error {
 	for file, data := range map[string][]interface{}{
 		"labs_disc.csv":  interfaceSlice(tab.aux),
 		"lecture.csv":    interfaceSlice(tab.lectures),
@@ -292,14 +290,7 @@ func writes(tab *tables) error {
 	return nil
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func (t *tables) populate(courses []*ucm.Course, sch ucm.Schedule) error {
+func (t *Tables) populateLabsLectures(courses []*ucm.Course, sch ucm.Schedule) error {
 	var dup = make(map[int]struct{})
 	for _, c := range courses {
 		if c.Time.Start.Year() == 0 {
@@ -319,7 +310,8 @@ func (t *tables) populate(courses []*ucm.Course, sch ucm.Schedule) error {
 		}
 		dup[c.CRN] = struct{}{}
 
-		if ucm.CourseType(c.Activity) == ucm.Lecture {
+		typ := ucm.CourseType(c.Activity)
+		if typ == ucm.Lecture || typ == ucm.Seminar {
 			t.lectures = append(t.lectures, &models.Lecture{
 				CRN:          c.CRN,
 				StartTime:    c.Time.Start,
@@ -497,51 +489,56 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Entry, error
 	return result, err
 }
 
-func daysString(days []time.Weekday) string {
-	var s = make([]string, len(days))
-	for i, d := range days {
-		s[i] = strings.ToLower(d.String())
-	}
-	// return strings.Join(s, ";")
-
-	arr := pq.Array(s)
-	val, err := arr.Value()
-	if err != nil {
-		return "{}"
-	}
-	return val.(string)
+type blueprint struct {
+	Subject string
+	Num     int
+	Title   string
+	CRNs    []int
 }
 
-func str(x interface{}) string {
-	switch v := x.(type) {
-	case int:
-		return strconv.FormatInt(int64(v), 10)
-	case int64:
-		return strconv.FormatInt(v, 10)
-	case []time.Weekday:
-		return daysString(v)
-	case time.Time:
-		if v.Equal(time.Time{}) {
-			return ""
-		} else if v.Hour() == 0 && v.Minute() == 0 && v.Second() == 0 {
-			return v.Format(models.DateFormat)
-		} else if v.Year() == 0 && v.Month() == time.January && v.Day() == 1 {
-			return v.Format(models.TimeFormat)
-		}
-		return ""
-	default:
-		return ""
-	}
-}
-
-func instructorMapToInterfaceSlice(m map[string]*models.Instructor) []interface{} {
+func findBlueprints(courses []*ucm.Course) (map[string][]*ucm.Course, error) {
 	var (
-		arr = make([]interface{}, len(m))
-		i   = 0
+		groups = make(map[string][]*ucm.Course)
 	)
-	for _, inst := range m {
-		arr[i] = inst
-		i++
+	for _, c := range courses {
+		key := fmt.Sprintf("%s-%d", c.Subject, c.Number)
+		list, ok := groups[key]
+		if !ok {
+			groups[key] = []*ucm.Course{c}
+			continue
+		}
+		groups[key] = append(list, c)
 	}
-	return arr
+
+	blueprints := make([]blueprint, 0, len(groups))
+	for _, list := range groups {
+		titles := make(map[string]struct{}, 0)
+		bp := blueprint{
+			Subject: list[0].Subject,
+			Num:     list[0].Number,
+		}
+
+		for _, c := range list {
+			titles[c.Title] = struct{}{}
+			if c.Subject != bp.Subject {
+				return nil, errors.New("course subject did not match")
+			}
+			if c.Number != bp.Num {
+				return nil, errors.New("course number did not match")
+			}
+			bp.CRNs = append(bp.CRNs, c.CRN)
+		}
+
+		if len(titles) >= 2 && len(titles) < 6 {
+			titlesList := mapKeys(titles)
+			dist := levenshtein.ComputeDistance(titlesList[0], titlesList[1])
+			if dist >= 18 {
+				bp.Title = titlesList[0] + ", " + titlesList[1]
+			} else if dist < 18 {
+				bp.Title = titlesList[0]
+			}
+		}
+		blueprints = append(blueprints, bp)
+	}
+	return groups, nil
 }
