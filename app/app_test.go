@@ -1,9 +1,10 @@
 package app
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,31 +12,32 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 	"github.com/mercedtime/api/db/models"
 	"github.com/mercedtime/api/users"
+	"github.com/ulule/limiter/v3/drivers/store/memory"
 )
 
 func Test(t *testing.T) {
-	a := testApp(t)
-	rows, err := a.DB.Query("SELECT updated_at FROM aux")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for rows.Next() {
-		tm := time.Time{}
-		if err = rows.Scan(&tm); err != nil {
-			t.Fatal(err)
-		}
-		fmt.Println(tm)
-	}
+	// a := testApp(t)
+	// rows, err := a.DB.Query("SELECT updated_at FROM aux")
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	// for rows.Next() {
+	// 	tm := time.Time{}
+	// 	if err = rows.Scan(&tm); err != nil {
+	// 		t.Fatal(err)
+	// 	}
+	// 	fmt.Println(tm)
+	// }
 }
 
 func testConfig() *Config {
 	return &Config{
+		InMemoryRateStore: true,
 		Database: DatabaseConfig{
 			Driver:   "postgres",
 			Host:     "localhost",
@@ -52,8 +54,10 @@ func testApp(t *testing.T) *App {
 	t.Helper()
 	conf := testConfig()
 	a := &App{
-		DB:     sqlx.MustConnect(conf.Database.Driver, conf.GetDSN()),
-		Config: conf,
+		DB:        sqlx.MustConnect(conf.Database.Driver, conf.GetDSN()),
+		Config:    conf,
+		RateStore: memory.NewStore(),
+		Protected: func(c *gin.Context) { c.Next() },
 	}
 	gin.SetMode(gin.TestMode)
 	a.Engine = gin.New()
@@ -156,6 +160,7 @@ func TestListEndpoints(t *testing.T) {
 }
 
 func TestLectureRoutes(t *testing.T) {
+	t.Skip("not actually using these")
 	var (
 		crn int
 		app = testApp(t)
@@ -241,8 +246,23 @@ func TestInstructorRoutes(t *testing.T) {
 	}
 }
 
-func TestPostUser(t *testing.T) {
-	a := testApp(t)
+func TestUser(t *testing.T) {
+	conf := testConfig()
+	a := &App{
+		DB:        sqlx.MustConnect(conf.Database.Driver, conf.GetDSN()),
+		Config:    conf,
+		RateStore: memory.NewStore(),
+		Protected: func(c *gin.Context) { c.Next() },
+	}
+	gin.SetMode(gin.TestMode)
+	a.Engine = gin.New()
+	auth, err := a.NewJWTAuth()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// regegister routes with new auth
+	a.RegisterRoutes(&a.Engine.RouterGroup)
+	a.Engine.POST("/login", auth.LoginHandler)
 	ts := httptest.NewServer(a.Engine)
 	defer a.Close()
 	defer ts.Close()
@@ -251,22 +271,32 @@ func TestPostUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	for _, tst := range []struct {
-		Path string
-		Data string
-		Code int
+		Path string `json:"-"`
+		Data string `json:"-"`
+		Code int    `json:"-"`
 
-		Name, Password, Email string
+		Name     string `json:"name"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
 	}{
 		{Path: "/user", Data: `{"name":"testuser"}`, Code: 400},
-		{Path: "/user", Data: `{"name":"testuser","email":"test@test.com","password":"password1"}`, Code: 201},
 		{Path: "/user", Name: "testuser", Email: "test@test.com", Password: "password2", Code: 201},
+		{Path: "/user", Name: "testuser", Email: "invalidemail", Password: "password2", Code: 201},
 	} {
+		var (
+			body io.Reader
+			b    bytes.Buffer
+		)
 		if tst.Data == "" {
-			tst.Data = fmt.Sprintf(`{"name":"%s","email":"%s","password":"%s"}`, tst.Name, tst.Email, tst.Password)
+			if err = json.NewEncoder(&b).Encode(&tst); err != nil {
+				t.Fatal(err)
+			}
+			body = &b
+		} else {
+			body = strings.NewReader(tst.Data)
 		}
-		resp, err := ts.Client().Post(ts.URL+tst.Path, "application/json", strings.NewReader(tst.Data))
+		resp, err := ts.Client().Post(ts.URL+tst.Path, "application/json", body)
 		if err != nil {
 			t.Error(err)
 			continue
@@ -280,9 +310,18 @@ func TestPostUser(t *testing.T) {
 			continue
 		}
 		var (
-			u    users.User
-			user *users.User
+			u     users.User
+			user  *users.User
+			token = map[string]interface{}{"token": ""}
 		)
+		buildReq := func(m string) *http.Request {
+			return &http.Request{
+				Method: m, Proto: "HTTP/1.1",
+				URL: url, Header: http.Header{
+					"Authorization": {fmt.Sprintf("Bearer %s", token["token"])},
+				},
+			}
+		}
 		if err = json.NewDecoder(resp.Body).Decode(&u); err != nil {
 			t.Error(err)
 			continue
@@ -298,21 +337,64 @@ func TestPostUser(t *testing.T) {
 		if user.Name != u.Name {
 			t.Errorf("username response differs from database username; database: %s, response: %s", user.Name, u.Name)
 		}
-		user, err = a.GetUser(users.User{ID: u.ID})
-		if err != nil {
+
+		b.Reset()
+		if err = json.NewEncoder(&b).Encode(tst); err != nil {
 			t.Error(err)
 		}
-	Cleanup:
+		resp, err = ts.Client().Post(ts.URL+"/login", "application/json", &b)
+		if err != nil {
+			t.Error(err)
+			goto Cleanup
+		}
+		if err = json.NewDecoder(resp.Body).Decode(&token); err != nil {
+			t.Error(err)
+			goto Cleanup
+		}
+
+		url.Path = "/user/self"
+		if resp, err := ts.Client().Do(buildReq("GET")); err != nil {
+			t.Error(resp.Status, err)
+		}
+		url.Path = "/user/badid"
+		if resp, err = ts.Client().Do(buildReq("GET")); err == nil {
+			if resp.StatusCode < 300 {
+				t.Errorf("expected a bad status, got %s", resp.Status)
+			}
+		} else {
+			t.Error(err)
+		}
 		url.Path = fmt.Sprintf("/user/%d", u.ID)
-		resp, err = ts.Client().Do(&http.Request{
-			Method: "DELETE",
-			Proto:  "HTTP/1.1",
-			URL:    url,
-		})
+		resp, err = ts.Client().Do(buildReq("GET"))
+		if err != nil {
+			t.Error(err)
+			goto Cleanup
+		}
+		if err = json.NewDecoder(resp.Body).Decode(user); err != nil {
+			t.Error(err)
+		}
+		if user.Name != u.Name {
+			t.Errorf("username response differs from database username; database: %s, response: %s", user.Name, u.Name)
+		}
+		resp.Body.Close()
+
+	Cleanup:
+		url.Path = "/user/200000000"
+		resp, err = ts.Client().Do(buildReq("DELETE"))
 		if err != nil {
 			t.Error(err)
 		}
-		defer resp.Body.Close()
+		if resp.StatusCode < 300 {
+			t.Error("should be unauthorized")
+		}
+		resp.Body.Close()
+
+		url.Path = fmt.Sprintf("/user/%d", u.ID)
+		resp, err = ts.Client().Do(buildReq("DELETE"))
+		if err != nil {
+			t.Error(err)
+		}
+		resp.Body.Close()
 		if resp.StatusCode != 200 {
 			t.Errorf("did not delete user; %s", resp.Status)
 		}
@@ -338,8 +420,8 @@ func TestListEndpointsServer(t *testing.T) {
 			t.Error(err)
 		}
 		if resp.StatusCode != 200 {
-			b, _ := ioutil.ReadAll(resp.Body)
-			fmt.Printf("%s\n", b)
+			// b, _ := ioutil.ReadAll(resp.Body)
+			// fmt.Printf("%s\n", b)
 			t.Errorf("\"%s\" from %s", resp.Status, e)
 		}
 		if err = resp.Body.Close(); err != nil {

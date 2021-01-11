@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,9 @@ import (
 	"github.com/mercedtime/api/db/models"
 	"github.com/mercedtime/api/users"
 
+	"github.com/ulule/limiter/v3"
+	"github.com/ulule/limiter/v3/drivers/store/memory"
+
 	_ "github.com/lib/pq" // app package relies on pq for postgres
 )
 
@@ -20,9 +24,28 @@ type App struct {
 	DB        *sqlx.DB
 	Config    *Config
 	Engine    *gin.Engine
+	RateStore limiter.Store
 	Protected gin.HandlerFunc
 
 	jwtIdentidyKey string
+}
+
+// New creates a new app
+func New(conf *Config) (*App, error) {
+	db, err := sqlx.Connect(conf.Database.Driver, conf.GetDSN())
+	if err != nil {
+		return nil, err
+	}
+	a := &App{
+		DB:     db,
+		Config: conf,
+	}
+	if conf.InMemoryRateStore {
+		a.RateStore = memory.NewStore()
+	} else {
+		return nil, errors.New("don't know how to create rate limit storage")
+	}
+	return a, nil
 }
 
 // Close the application resourses
@@ -113,7 +136,7 @@ var LoggerConfig = gin.LoggerConfig{
 // NewJWTAuth creates the default jwt auth middleware
 func (a *App) NewJWTAuth() (*ginjwt.GinJWTMiddleware, error) {
 	if a.jwtIdentidyKey == "" {
-		a.jwtIdentidyKey = "id"
+		a.jwtIdentidyKey = "identity"
 	}
 	middleware, err := ginjwt.New(&ginjwt.GinJWTMiddleware{
 		IdentityKey: a.jwtIdentidyKey,
@@ -156,6 +179,7 @@ func (a *App) NewJWTAuth() (*ginjwt.GinJWTMiddleware, error) {
 	if err != nil {
 		return nil, err
 	}
+	a.Protected = middleware.MiddlewareFunc()
 	return middleware, nil
 }
 
@@ -164,7 +188,6 @@ func (a *App) authenticate(c *gin.Context) (interface{}, error) {
 	if ok && newuser != nil {
 		return newuser, nil
 	}
-
 	type login struct {
 		Name     string `form:"name" json:"name" binding:"required"`
 		Password string `form:"password" json:"password" binding:"required"`
@@ -189,12 +212,7 @@ func (a *App) authorize(data interface{}, c *gin.Context) bool {
 	if !ok {
 		return false
 	}
-	switch c.Request.URL.Path {
-	case "/admin":
-		return u.IsAdmin
-	default:
-		return c.Request.Method == "GET"
-	}
+	return authorize(c.Request, u)
 }
 
 func (a *App) jwtPayload(data interface{}) ginjwt.MapClaims {

@@ -15,6 +15,7 @@ require (
 	github.com/lib/pq v1.9.0
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/pflag v1.0.5
+	github.com/ulule/limiter/v3 v3.8.0
 	github.com/vektah/gqlparser/v2 v2.1.0
 	golang.org/x/crypto v0.0.0-20201124201722-c8d3bf9c5392
 )

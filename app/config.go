@@ -2,10 +2,12 @@ package app
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"strconv"
 
+	"github.com/gin-gonic/gin"
 	"github.com/harrybrwn/config"
 	"github.com/spf13/pflag"
 )
@@ -17,6 +19,8 @@ type Config struct {
 	Mode     string         `config:"mode,usage=set the gin mode ('debug'|'release')" default:"debug"`
 	Secret   string         `config:"secret,notflag" env:"JWT_SECRET"`
 	Database DatabaseConfig `config:"db" yaml:"db"`
+
+	InMemoryRateStore bool `config:"in_memory_rate_store" yaml:"in_memory_rate_store" default:"true"`
 }
 
 // DatabaseConfig is the part of the config struct that
@@ -37,6 +41,10 @@ func (c *Config) Init() error {
 	flag := pflag.NewFlagSet("api", pflag.ContinueOnError)
 	config.BindToPFlagSet(flag)
 	flag.SortFlags = false
+
+	if err := config.ReadConfigFile(); err != nil {
+		log.Println("Warning:", err)
+	}
 	switch err := flag.Parse(os.Args[1:]); err {
 	case nil:
 		break
@@ -45,6 +53,7 @@ func (c *Config) Init() error {
 	default:
 		return err
 	}
+	gin.SetMode(config.GetString("mode"))
 	return config.InitDefaults()
 }
 

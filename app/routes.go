@@ -2,6 +2,7 @@ package app
 
 import (
 	"database/sql"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -12,27 +13,29 @@ import (
 
 // RegisterRoutes will setup all the app routes
 func (a *App) RegisterRoutes(g *gin.RouterGroup) {
-	a.lectureGroup(g)
+	// Main data
+	// TODO add "/catalog/:year/:term/courses"
+	g.GET("/courses", a.getCourseBluprints)
+	g.GET("/catalog/:year/:term", listParamsMiddleware, termyearMiddle, getCatalog(a.DB))
 	// utility endpoints
 	g.GET("/subjects", a.subjects)
 	g.GET("/terms", a.availbleTerms)
 
+	a.lectureGroup(g)
 	lists := g.Group("/", listParamsMiddleware)
 	lists.GET("/lectures", ListLectures(a.DB))
 	lists.GET("/exams", ListExams(a.DB))
 	lists.GET("/labs", ListLabs(a.DB))
 	lists.GET("/discussions", ListDiscussions(a.DB))
 	lists.GET("/instructors", ListInstructors(a.DB))
-	g.GET("/courses", a.getCourseBluprints)
-	lists.GET("/catalog/:year/:term", termyearMiddle, getCatalog(a.DB))
 
 	g.OPTIONS("/user", func(c *gin.Context) { c.Status(204) })
-	g.POST("/user", a.PostUser)
-	g.GET("/user/:id", idParamMiddleware, a.getUser)
-	g.DELETE("/user/:id", idParamMiddleware, a.deleteUser)
-
+	g.POST("/user", createUserRateLimit(a.RateStore), a.PostUser)
+	g.GET("/user/:id", a.Protected, a.getUser)
+	g.DELETE("/user/:id", a.Protected, idParamMiddleware, a.deleteUser)
 	g.GET("/instructor/:id", instructorFromID(a))
 	g.GET("/instructor/:id/courses", instructorCourses(a.DB))
+	g.GET("/unauthorized", a.Protected, func(c *gin.Context) { c.Status(200) }) // for testing should always be unauthorized
 }
 
 // LectureGroup returns the router group for all the lecture routes.
@@ -42,11 +45,13 @@ func (a *App) lectureGroup(g *gin.RouterGroup) *gin.RouterGroup {
 	lect.GET("/:crn/exam", exam(a.DB))
 	lect.GET("/:crn/labs", labsForLecture(a.DB))
 	lect.GET("/:crn/instructor", instructorFromLectureCRN(a.DB))
-	lect.DELETE("/:crn", func(c *gin.Context) {
-		_, err := a.DB.Exec("DELETE FROM lectures WHERE crn = $1", c.MustGet("crn"))
-		if err != nil {
-			senderr(c, err, 500)
-		}
+	lect.DELETE("/:crn", a.Protected, func(c *gin.Context) {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+		// _, err := a.DB.Exec("DELETE FROM lectures WHERE crn = $1", c.MustGet("crn"))
+		// if err != nil {
+		// 	senderr(c, err, 500)
+		// }
 	})
 	return lect
 }
@@ -167,8 +172,7 @@ var (
 	// NoOp Defaults vary between databases
 	// sqlite3:  -1
 	// postgres: nil
-	defaultLimit interface{} = nil
-
+	defaultLimit  interface{} = nil
 	defaultOffset interface{} = 0 // default to 0
 )
 

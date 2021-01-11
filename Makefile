@@ -41,7 +41,6 @@ dump:
 	psql -h $(PG_HOST) -p $(POSTGRES_PORT) -d $(POSTGRES_DB) -U $(POSTGRES_USER) -c 'select * from counts'
 	@if [ -f $(DUMP_FILE) ]; then rm $(DUMP_FILE); fi
 	pg_dump $(DUMP_FLAGS) --file=$(DUMP_FILE)
-
 	@if [ -f $(ENROLLMENT_DUMP) ]; then rm $(ENROLLMENT_DUMP); fi
 	pg_dump $(DUMP_FLAGS) --file=$(ENROLLMENT_DUMP) --data-only --table=enrollment
 
@@ -63,3 +62,4 @@ historical-data:
 	./mtupdate -csv -out=db/data/summer-2020 -year=2020 -term=summer
 
 .PHONY: build clean gen test coverage dump
+
