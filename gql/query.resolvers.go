@@ -15,8 +15,32 @@ func (r *queryResolver) Courses(ctx context.Context, limit *int, offset *int, su
 	return resolveCourses(ctx, r.DB, limit, offset, subject)
 }
 
-func (r *queryResolver) Blueprints(ctx context.Context, limit *int, offset *int, subject *string) ([]*catalog.CourseBlueprint, error) {
+func (r *queryResolver) Somequery(ctx context.Context, input *graph.BlueprintInput) (*int, error) {
 	panic(fmt.Errorf("not implemented"))
+}
+
+func (r *queryResolver) Blueprints(ctx context.Context, limit *int, offset *int, subject *string, year *int, term *string) ([]*catalog.CourseBlueprint, error) {
+	if subject == nil {
+		*subject = ""
+	}
+	params := catalog.BlueprintParams{
+		SemesterParams: catalog.SemesterParams{
+			Subject: *subject,
+		},
+	}
+	if year != nil {
+		params.Year = *year
+	}
+	if term != nil {
+		params.Term = *term
+	}
+	if limit != nil {
+		*params.Limit = uint(*limit)
+	}
+	if offset != nil {
+		*params.Offset = uint(*offset)
+	}
+	return catalog.GetBlueprints(&params)
 }
 
 func (r *queryResolver) Catalog(ctx context.Context, limit *int, offset *int, subject *string) ([]*catalog.Course, error) {

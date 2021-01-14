@@ -1,3 +1,14 @@
+input SemesterParams {
+  subject: String,
+  year: Int,
+  term: String
+}
+
+input BlueprintInput {
+  limit: Int,
+  offset: Int,
+}
+
 type Query {
   courses(
     limit: Int,
@@ -5,10 +16,14 @@ type Query {
     subject: String
   ): [Course!]!
 
+  somequery(input: BlueprintInput): Int
+
   blueprints(
     limit: Int,
     offset: Int,
-    subject: String
+    subject: String,
+    year: Int,
+    term: String
   ): [CourseBlueprint!]!
 
   catalog(

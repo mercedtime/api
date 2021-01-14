@@ -29,7 +29,6 @@ func (a *App) RegisterRoutes(g *gin.RouterGroup) {
 	lists.GET("/discussions", ListDiscussions(a.DB))
 	lists.GET("/instructors", ListInstructors(a.DB))
 
-	g.OPTIONS("/user", func(c *gin.Context) { c.Status(204) })
 	g.POST("/user", createUserRateLimit(a.RateStore), a.PostUser)
 	g.GET("/user/:id", a.Protected, a.getUser)
 	g.DELETE("/user/:id", a.Protected, idParamMiddleware, a.deleteUser)

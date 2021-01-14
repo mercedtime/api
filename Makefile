@@ -10,6 +10,7 @@ DUMP_FILE ?= ./full-database.dump
 ENROLLMENT_DUMP ?= db/data/spring-2021/enrollment.dump
 
 build:
+	go generate ./sql
 	go build -o $(BIN) $(CMD)
 
 clean:
@@ -62,4 +63,3 @@ historical-data:
 	./mtupdate -csv -out=db/data/summer-2020 -year=2020 -term=summer
 
 .PHONY: build clean gen test coverage dump
-

@@ -47,3 +47,21 @@ func TestCSVRow(t *testing.T) {
 		t.Error("bad csv row conversion")
 	}
 }
+
+func TestGetSchema(t *testing.T) {
+	type A struct {
+		A string `db:"a"`
+		B int    `db:"b"`
+		C bool   `db:"-"`
+	}
+	sc := GetSchema(A{})
+	if len(sc) != 2 {
+		t.Fatal("bad length")
+	}
+	if sc[0] != "a" {
+		t.Error("bad column name")
+	}
+	if sc[1] != "b" {
+		t.Error("bad column name")
+	}
+}

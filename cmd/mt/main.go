@@ -75,13 +75,10 @@ func run() error {
 		r.Use(cors)
 		v1.Use(cors)
 	}
-	v1.Use(func(c *gin.Context) {
-		id, _ := c.Get("identity")
-		log.Println("user id:", id)
-	})
 	v1.GET("/test", auth.MiddlewareFunc(), func(c *gin.Context) {
 		fmt.Println(c)
 	})
+	v1.OPTIONS("/user", func(c *gin.Context) { c.Status(204) })
 	a.RegisterRoutes(v1)
 
 	r.POST("/graphql", gql.Handler(a.DB))

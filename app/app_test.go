@@ -33,6 +33,15 @@ func Test(t *testing.T) {
 	// 	}
 	// 	fmt.Println(tm)
 	// }
+
+	// base := sq.Select("*").From("catalog").Where(
+	// 	"type IN (?, ?, ?)", ucm.Lecture, ucm.Seminar, ucm.Studio)
+	// base = base.Where(sq.Eq{"year": 2020})
+	// q, args, err := base.ToSql()
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	// fmt.Println(q, args)
 }
 
 func testConfig() *Config {

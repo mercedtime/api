@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/postgres" // need postgres dialect
 	"github.com/gin-gonic/gin"
@@ -37,61 +38,54 @@ func listParamsMiddleware(c *gin.Context) {
 func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 	var (
 		addons = map[string]string{
-			"year":    " AND year = $%d",
-			"term":    " AND term_id = $%d",
-			"subject": " AND subject = $%d",
+			"year":    "year",
+			"term":    "term_id",
+			"subject": "subject",
 		}
 	)
 
 	// using a view for this query
-	catalogQuery := `select * from catalog
-					 where type in ('LECT','SEM','STDO')`
+	psql := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
+	base := psql.Select("*").From("catalog").Where(
+		"type IN ('LECT','SEM','STDO')")
 
 	return func(c *gin.Context) {
 		var (
-			q      = catalogQuery
-			args   = make([]interface{}, 0, 5)
-			argc   = 1
 			result = make(catalog.Catalog, 0, 250)
 			p      = catalog.PageParams{}
+			query  = base
 		)
 		if err := c.BindQuery(&p); err != nil {
 			c.JSON(500, &Error{err.Error(), 500})
 			return
 		}
-
 		for key, addon := range addons {
 			if param, ok := c.Get(key); ok && param != nil {
-				q += fmt.Sprintf(addon, argc)
-				args = append(args, param)
-				argc++
+				query = query.Where(sq.Eq{addon: param})
 			}
 		}
 
 		order, ok := c.GetQuery("order")
 		if ok {
 			switch order {
-			case "updated_at":
-				q += " ORDER BY updated_at DESC"
-			case "capacity":
-				q += " ORDER BY capacity ASC"
-			case "enrolled":
-				q += " ORDER BY enrolled ASC"
+			case "updated_at", "capacity", "enrolled", "remaining":
+				query = query.OrderBy(order + " DESC")
 			}
 		}
 
 		if p.Limit != nil {
-			q += fmt.Sprintf(" LIMIT $%d", argc)
-			args = append(args, p.Limit)
-			argc++
+			query = query.Limit(uint64(*p.Limit))
 		}
 		if p.Offset != nil {
-			q += fmt.Sprintf(" OFFSET $%d", argc)
-			args = append(args, p.Offset)
-			argc++
+			query = query.Offset(uint64(*p.Offset))
+		}
+		q, args, err := query.ToSql()
+		if err != nil {
+			senderr(c, err, 500)
+			return
 		}
 
-		err := db.Select(&result, q, args...)
+		err = db.Select(&result, q, args...)
 		if err != nil {
 			senderr(c, err, 500)
 			return
@@ -102,62 +96,14 @@ func getCatalog(db *sqlx.DB) gin.HandlerFunc {
 
 func (a *App) getCourseBluprints(c *gin.Context) {
 	var (
-		query = `
-		SELECT
-			  subject,
-			  course_num,
-			  (array_agg(title))[1] AS title,
-			  min(units) AS min_units,
-			  max(units) AS max_units,
-			  sum(c.enrolled) AS enrolled,
-			  sum(c.capacity) AS capacity,
-			  sum(c.enrolled)::float / sum(c.capacity)::float AS percent,
-			  array_agg(c.crn) AS crns,
-			  array_agg(c.id) AS ids,
-			  count(*) AS count
-		  FROM
-			  course c
-		 WHERE 0 = 0
-			  %s
-	  GROUP BY
-			  subject,
-			  course_num
-	  ORDER BY
-			  subject ASC,
-			  course_num ASC
-	  LIMIT $%d OFFSET $%d`
 		err    error
-		where  string
-		args   = make([]interface{}, 0, 2)
-		resp   = make([]catalog.CourseBlueprint, 0, 350)
-		params struct {
-			catalog.PageParams
-			catalog.SemesterParams
-			Units int `query:"units" form:"units"`
-		}
+		params catalog.BlueprintParams
 	)
-
-	if params.Subject != "" {
-		where += "AND subject = $1 "
-		args = append(args, strings.ToUpper(params.Subject))
-	}
-	if params.Term != "" {
-		where += "AND term_id = $2 "
-		args = append(args, catalog.GetTermID(params.Term))
-	}
-	if params.Year != 0 {
-		where += "AND year = $3 "
-		args = append(args, params.Year)
-	}
 	if err = c.BindQuery(&params); err != nil {
 		senderr(c, err, 500)
 		return
 	}
-	l := len(args) + 1
-	err = a.DB.Select(
-		&resp, fmt.Sprintf(query, where, l, l+1),
-		append(args, params.Limit, params.Offset)...,
-	)
+	resp, err := catalog.GetBlueprints(&params)
 	if err != nil {
 		senderr(c, err, 500)
 		return

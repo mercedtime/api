@@ -10,6 +10,7 @@ import (
 	ginjwt "github.com/appleboy/gin-jwt/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+	apidb "github.com/mercedtime/api/db"
 	"github.com/mercedtime/api/db/models"
 	"github.com/mercedtime/api/users"
 
@@ -36,6 +37,7 @@ func New(conf *Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	apidb.Set(db)
 	a := &App{
 		DB:     db,
 		Config: conf,
@@ -123,8 +125,9 @@ func (e *Error) Error() string {
 var LoggerConfig = gin.LoggerConfig{
 	Formatter: func(f gin.LogFormatterParams) string {
 		return fmt.Sprintf(
-			"[\x1b[35m%s\x1b[0m] %6v %s%d%s %s %s\n",
+			"[\x1b[35m%s\x1b[0m] \"\x1b[34m%s\x1b[0m\" %6v %s%d%s %s %s\n",
 			f.TimeStamp.Format(time.Stamp),
+			f.ClientIP,
 			f.Latency,
 			statusColor(f.StatusCode), f.StatusCode, "\x1b[0m",
 			f.Method,
