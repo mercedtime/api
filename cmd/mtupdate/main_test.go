@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"math/rand"
 	"sync"
 	"testing"
@@ -17,15 +16,6 @@ var (
 
 	subjects = []string{"CSE", "BIO", "CHEM", "MATH", "PHYS", "ENGR", "ECON", "GASP", "ME"}
 )
-
-func Test(t *testing.T) {
-	s := testSchedule(t)
-	bp, err := findBlueprints(s.Ordered())
-	if err != nil {
-		t.Fatal(err)
-	}
-	fmt.Println(len(s), len(bp))
-}
 
 func testSchedule(t *testing.T) ucm.Schedule {
 	t.Helper()
@@ -52,6 +42,18 @@ func testSchedule(t *testing.T) ucm.Schedule {
 	}
 	scheduleMu.Unlock()
 	return testingSchedule
+}
+
+func Test(t *testing.T) {
+	// s := testSchedule(t)
+	// bp, err := findBlueprints(s.Ordered())
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	// for key, courses := range bp {
+	// 	fmt.Println(key, courses)
+	// }
+	// fmt.Println(len(s), len(bp))
 }
 
 func TestGetDiscussionLecture(t *testing.T) {

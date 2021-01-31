@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -415,17 +416,12 @@ func getDiscussionLecture(disc *ucm.Course, sch ucm.Schedule) (*ucm.Course, erro
 // Side note: performance drops if the number of workers is too high
 func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Entry, error) {
 	var (
-		mu   sync.Mutex
-		wg   sync.WaitGroup
-		errs = make(chan error)
-		ch   = make(chan *ucm.Course)
-	)
-	// These will be protected by the mutex
-	var (
+		mu     sync.Mutex
+		wg     sync.WaitGroup
+		errs   = make(chan error)
+		ch     = make(chan *ucm.Course)
 		result = make([]*catalog.Entry, 0, len(courses))
 	)
-	go func() {
-	}()
 
 	// The last worker will not finish until
 	// the goroutine above finishes and will
@@ -436,9 +432,7 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Entry, error
 	for i := 0; i < workers; i++ {
 		go func(worker int) {
 			defer wg.Done()
-			var (
-				innerRes []*catalog.Entry
-			)
+			var innerRes []*catalog.Entry
 			for c := range ch {
 				info, err := c.Info()
 				if err != nil {
@@ -490,19 +484,29 @@ func GetCourseTable(courses []*ucm.Course, workers int) ([]*catalog.Entry, error
 }
 
 type blueprint struct {
-	Subject string
-	Num     int
-	Title   string
-	CRNs    []int
+	Subject    string
+	Num        int
+	Title      string
+	Enrollment int64
+	Capacity   int64
+	CRNs       []int
 }
 
-func findBlueprints(courses []*ucm.Course) (map[string][]*ucm.Course, error) {
+type blueprintKey struct {
+	Subject string
+	Num     int
+}
+
+func findBlueprints(courses []*ucm.Course) (map[blueprintKey][]*ucm.Course, error) {
 	var (
-		groups = make(map[string][]*ucm.Course)
+		groups = make(map[blueprintKey][]*ucm.Course)
+		key    blueprintKey
+		list   []*ucm.Course
+		ok     bool
 	)
 	for _, c := range courses {
-		key := fmt.Sprintf("%s-%d", c.Subject, c.Number)
-		list, ok := groups[key]
+		key = blueprintKey{Subject: strings.ToLower(c.Subject), Num: c.Number}
+		list, ok = groups[key]
 		if !ok {
 			groups[key] = []*ucm.Course{c}
 			continue
@@ -511,14 +515,16 @@ func findBlueprints(courses []*ucm.Course) (map[string][]*ucm.Course, error) {
 	}
 
 	blueprints := make([]blueprint, 0, len(groups))
-	for _, list := range groups {
+	for _, list = range groups {
 		titles := make(map[string]struct{}, 0)
 		bp := blueprint{
 			Subject: list[0].Subject,
 			Num:     list[0].Number,
 		}
-
 		for _, c := range list {
+			if c.Subject != bp.Subject || c.Number != bp.Num {
+				return nil, errors.New("incorrect course blueprint classification")
+			}
 			titles[c.Title] = struct{}{}
 			if c.Subject != bp.Subject {
 				return nil, errors.New("course subject did not match")
@@ -527,18 +533,23 @@ func findBlueprints(courses []*ucm.Course) (map[string][]*ucm.Course, error) {
 				return nil, errors.New("course number did not match")
 			}
 			bp.CRNs = append(bp.CRNs, c.CRN)
+			bp.Capacity += int64(c.Capacity)
+			bp.Enrollment += int64(c.Enrolled)
 		}
-
-		if len(titles) >= 2 && len(titles) < 6 {
-			titlesList := mapKeys(titles)
-			dist := levenshtein.ComputeDistance(titlesList[0], titlesList[1])
-			if dist >= 18 {
-				bp.Title = titlesList[0] + ", " + titlesList[1]
-			} else if dist < 18 {
-				bp.Title = titlesList[0]
-			}
-		}
+		bp.findTitle(titles)
 		blueprints = append(blueprints, bp)
 	}
 	return groups, nil
+}
+
+func (bp *blueprint) findTitle(titleSet map[string]struct{}) {
+	if len(titleSet) >= 2 && len(titleSet) < 6 {
+		titlesList := mapKeys(titleSet)
+		dist := levenshtein.ComputeDistance(titlesList[0], titlesList[1])
+		if dist >= 18 {
+			bp.Title = titlesList[0] + ", " + titlesList[1]
+		} else if dist < 18 {
+			bp.Title = titlesList[0]
+		}
+	}
 }

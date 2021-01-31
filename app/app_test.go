@@ -15,33 +15,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+	"github.com/mercedtime/api/db"
 	"github.com/mercedtime/api/db/models"
 	"github.com/mercedtime/api/users"
 	"github.com/ulule/limiter/v3/drivers/store/memory"
 )
 
 func Test(t *testing.T) {
-	// a := testApp(t)
-	// rows, err := a.DB.Query("SELECT updated_at FROM aux")
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
-	// for rows.Next() {
-	// 	tm := time.Time{}
-	// 	if err = rows.Scan(&tm); err != nil {
-	// 		t.Fatal(err)
-	// 	}
-	// 	fmt.Println(tm)
-	// }
-
-	// base := sq.Select("*").From("catalog").Where(
-	// 	"type IN (?, ?, ?)", ucm.Lecture, ucm.Seminar, ucm.Studio)
-	// base = base.Where(sq.Eq{"year": 2020})
-	// q, args, err := base.ToSql()
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
-	// fmt.Println(q, args)
 }
 
 func testConfig() *Config {
@@ -71,6 +51,7 @@ func testApp(t *testing.T) *App {
 	gin.SetMode(gin.TestMode)
 	a.Engine = gin.New()
 	a.RegisterRoutes(&a.Engine.RouterGroup)
+	db.Set(a.DB)
 	return a
 }
 

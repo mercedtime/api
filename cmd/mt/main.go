@@ -1,9 +1,12 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,8 +29,16 @@ func main() {
 	}
 }
 
+// Config is the config struct
+type Config struct {
+	app.Config `yaml:",inline"`
+	CertFile   string `yaml:"cert"`
+	KeyFile    string `yaml:"key"`
+}
+
 func run() error {
-	var conf = &app.Config{}
+	var conf = &Config{}
+	// var conf = &app.Config{}
 	config.SetFilename("mt.yml")
 	config.SetType("yml")
 	config.AddPath(".")
@@ -35,14 +46,18 @@ func run() error {
 	if err := conf.Init(); err != nil {
 		return err
 	}
+	fmt.Printf("%+v\n", conf)
 
+	conf.InMemoryRateStore = true
 	r := gin.New()
 	r.Use(gin.Recovery(), gin.LoggerWithConfig(app.LoggerConfig))
 	r.NoRoute(func(c *gin.Context) {
 		c.JSON(404, app.ErrStatus(404, "no route for "+c.Request.URL.Path))
 	})
 
-	a, err := app.New(conf)
+	a, err := app.New(&conf.Config)
+	// a, err := app.New(&conf.Config)
+	// a, err := app.New(conf)
 	if err != nil {
 		return err
 	}
@@ -103,15 +118,32 @@ func run() error {
 		})
 	})
 
-	addr := conf.Address()
+	var (
+		addr   = net.JoinHostPort(conf.Host, strconv.FormatInt(conf.Port, 10))
+		useTLS bool
+	)
 	fmt.Printf("\n\nRunning on \x1b[32;4mhttp://%s\x1b[0m\n", addr)
 
+	cert, err := tls.LoadX509KeyPair(conf.CertFile, conf.KeyFile)
+	if err != nil {
+		useTLS = false
+	} else {
+		useTLS = true
+	}
 	srv := http.Server{
 		Addr:           addr,
 		Handler:        a,
 		ReadTimeout:    time.Minute * 5,
 		WriteTimeout:   time.Minute * 5,
 		MaxHeaderBytes: http.DefaultMaxHeaderBytes,
+		TLSConfig: &tls.Config{
+			ServerName:   "mt",
+			Certificates: []tls.Certificate{cert},
+		},
+		TLSNextProto: map[string]func(s *http.Server, conn *tls.Conn, h http.Handler){},
+	}
+	if useTLS {
+		return srv.ListenAndServeTLS("", "")
 	}
 	return srv.ListenAndServe()
 }

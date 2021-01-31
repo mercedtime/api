@@ -10,7 +10,7 @@ DUMP_FILE ?= ./full-database.dump
 ENROLLMENT_DUMP ?= db/data/spring-2021/enrollment.dump
 
 build:
-	go generate ./sql
+	go generate ./gql
 	go build -o $(BIN) $(CMD)
 
 clean:
@@ -23,15 +23,18 @@ gen:
 	go generate ./...
 
 test:
-	@env $(shell cat ../.env) go test ./... \
-		-cover -coverprofile=coverage.txt   \
-		-covermode=atomic
+	@env $(shell cat .env)                  \
+		go test ./...                       \
+		  -cover -coverprofile=coverage.txt \
+		  -covermode=atomic
 
 coverage:
 	go tool cover -html=coverage.txt
 
 build-test-image:
-	docker image build -t mt-api.tests . -f ./docker/Dockerfile.tests
+	docker image build . \
+		-t mt-api.tests  \
+		-f ./docker/Dockerfile.tests
 
 run-test-image:
 	docker container run --rm -it mt-api.test

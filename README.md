@@ -17,7 +17,7 @@
 | **POST**   | `/user`                             | Create a user                                | ✔️         |
 | **DELETE** | `/user/:id`                         | Delete a user                                | ✔️         |
 | **POST**   | `/login`                            | Get login credentials                        | ❌        |
-| **GET**    | `/catalog/:year/:term/all`          | Get the full course catalog for one semester | ❌        |
+| **GET**    | `/catalog/:year/:term`          | Get the full course catalog for one semester | ❌        |
 | **GET**    | `/catalog/:year/:term/courses`      | Get a list of courses                        | ❌        |
 
 # TODO: Coding Shit
@@ -35,13 +35,9 @@
 - To control which year and term for which the data is returned, write a
   "State" struct that contains this global route state to be accessed globally
   be the api. (maybe make a new internal package routes with "routes.State")
-- GraphQL!!!
-  - <https://github.com/99designs/gqlgen>
-  - <https://github.com/graphql-go/graphql>
 
 # TODO: Thinking Shit
 
-- What is the best way to expose enrollment data in the api?
 - Need to build a prerequisites tree.
 - The instructor id system is a horrible hack, use a SERIAL type instead
 - To make this useful for different terms, we cannot rely on crn as our only
@@ -155,6 +151,7 @@ something like this.
 ```yaml
 host: 0.0.0.0
 port: 8080
+secret: 'some long string'
 
 db:
   driver: 'postgres'

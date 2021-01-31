@@ -165,53 +165,9 @@ type execable interface {
 	Exec(string, ...interface{}) (sql.Result, error)
 }
 
-type tableUpdate struct {
-	target, tmp string
-	tx          *sqlx.Tx
-	err         error
-}
-
-func newUpdate(target string, tx *sqlx.Tx) (*tableUpdate, error) {
-	u := &tableUpdate{
-		target: target,
-		tmp:    "_tmp_" + target,
-		tx:     tx,
-		err:    nil,
-	}
-	_, u.err = tx.Exec(fmt.Sprintf("SELECT * INTO %s FROM %s LIMIT 0", u.tmp, u.target))
-	if u.err != nil {
-		return nil, u.err
-	}
-	return u, nil
-}
-
-func (tu *tableUpdate) start(columns ...string) error {
-	// stmt, err := tu.tx.Prepare(pq.CopyIn(tu.tmp, columns...))
-	// if err != nil {
-	// 	return err
-	// }
-	return nil
-}
-
-func (tu *tableUpdate) close() (err error) {
-	// drop the table no matter what
-	_, err = tu.tx.Exec("DROP TABLE " + tu.tmp)
-	if err != nil {
-		tu.tx.Rollback()
-		return err
-	}
-	if tu.err != nil {
-		tu.tx.Rollback()
-		return tu.err
-	}
-	// commit if everything went ok
-	return tu.tx.Commit()
-}
-
 type tmptable struct {
 	target, tmp string
-
-	tx *sql.Tx
+	tx          *sql.Tx
 }
 
 func newtmptable(target string, tx *sql.Tx) (*tmptable, error) {
@@ -454,14 +410,6 @@ func updateLabsTable(
 	if err = insertNew(target, tmpTable, tx, newcols...); err != nil {
 		return err
 	}
-	// r, err := tx.Query(fmt.Sprintf("SELECT * FROM %s where", tmpTable))
-	// if err != nil {
-	// 	log.Println(err)
-	// 	return err
-	// }
-	// if err = printQueryRows(r); err != nil {
-	// 	log.Println(err)
-	// }
 
 	q, err := updatequery(genquery{
 		Target:     target,
