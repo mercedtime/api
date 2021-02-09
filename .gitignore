@@ -13,6 +13,7 @@ mt.yml
 /vendor/
 TODO*
 test.sql
+/*.sql
 
 # Data
 *.sqlite

@@ -125,12 +125,13 @@ func (e *Error) Error() string {
 var LoggerConfig = gin.LoggerConfig{
 	Formatter: func(f gin.LogFormatterParams) string {
 		return fmt.Sprintf(
-			"[\x1b[35m%s\x1b[0m] \"\x1b[34m%s\x1b[0m\" %6v %s%d%s %s %s\n",
+			"[\x1b[35m%s\x1b[0m] \"\x1b[34m%s\x1b[0m\" %6v %s %s %s%d%s %s\n",
 			f.TimeStamp.Format(time.Stamp),
 			f.ClientIP,
 			f.Latency,
-			statusColor(f.StatusCode), f.StatusCode, "\x1b[0m",
+			f.Request.Proto,
 			f.Method,
+			statusColor(f.StatusCode), f.StatusCode, "\x1b[0m",
 			f.Path,
 		)
 	},

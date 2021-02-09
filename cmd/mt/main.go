@@ -3,20 +3,22 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/harrybrwn/config"
 	"github.com/mercedtime/api/app"
 	"github.com/mercedtime/api/gql"
-	"github.com/mercedtime/api/users"
+	"github.com/sirupsen/logrus"
 
 	ginjwt "github.com/appleboy/gin-jwt/v2"
-	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 	"github.com/ulule/limiter/v3"
@@ -32,21 +34,25 @@ func main() {
 // Config is the config struct
 type Config struct {
 	app.Config `yaml:",inline"`
-	CertFile   string `yaml:"cert"`
-	KeyFile    string `yaml:"key"`
+
+	TLS      bool   `yaml:"tls"`
+	CertFile string `yaml:"cert"`
+	KeyFile  string `yaml:"key"`
+}
+
+func (c *Config) setup() error {
+	config.SetFilename("mt.yml")
+	config.SetType("yml")
+	config.AddPath(".")
+	config.SetConfig(c)
+	return c.Init()
 }
 
 func run() error {
 	var conf = &Config{}
-	// var conf = &app.Config{}
-	config.SetFilename("mt.yml")
-	config.SetType("yml")
-	config.AddPath(".")
-	config.SetConfig(conf)
-	if err := conf.Init(); err != nil {
+	if err := conf.setup(); err != nil {
 		return err
 	}
-	fmt.Printf("%+v\n", conf)
 
 	conf.InMemoryRateStore = true
 	r := gin.New()
@@ -56,28 +62,22 @@ func run() error {
 	})
 
 	a, err := app.New(&conf.Config)
-	// a, err := app.New(&conf.Config)
-	// a, err := app.New(conf)
 	if err != nil {
 		return err
 	}
 	defer a.Close()
 	a.Engine = r
 
+	logrus.SetOutput(os.Stdout)
+	l := logrus.New()
+	l.Out = os.Stdout
+	logrus.Debug("testing logger")
+
 	auth, err := a.NewJWTAuth()
 	if err != nil {
 		return errors.Wrap(err, "could not create auth middleware")
 	}
 
-	cors := func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", strings.Join([]string{
-			"Content-Type",
-			"Authorization",
-		}, ","))
-		c.Next()
-	}
 	r.Use(ginlimit.NewMiddleware(limiter.New(
 		a.RateStore,
 		limiter.Rate{
@@ -118,21 +118,56 @@ func run() error {
 		})
 	})
 
-	var (
-		addr   = net.JoinHostPort(conf.Host, strconv.FormatInt(conf.Port, 10))
-		useTLS bool
-	)
-	fmt.Printf("\n\nRunning on \x1b[32;4mhttp://%s\x1b[0m\n", addr)
+	r.GET("/ws", func(c *gin.Context) {
+		println("got ws req")
+		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		for {
+			typ, r, err := conn.NextReader()
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			w, err := conn.NextWriter(typ)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			w.Write([]byte("you said: \""))
+			if _, err = io.Copy(w, r); err != nil {
+				log.Println(err)
+				continue
+			}
+			w.Write([]byte("\""))
+			if err = w.Close(); err != nil {
+				log.Println(err)
+			}
+			conn.Close()
+			return
+		}
+	})
+	r.GET("/echo", func(c *gin.Context) {
+		fmt.Fprintf(c.Writer, "hello there")
+	})
+
+	logrus.Debug("testing logger")
+	return listen(conf, a)
+}
+
+func listen(conf *Config, h http.Handler) error {
+	var addr = net.JoinHostPort(conf.Host, strconv.FormatInt(conf.Port, 10))
 
 	cert, err := tls.LoadX509KeyPair(conf.CertFile, conf.KeyFile)
 	if err != nil {
-		useTLS = false
-	} else {
-		useTLS = true
+		log.Printf("Warning: %v\n", err)
+		conf.TLS = false
 	}
 	srv := http.Server{
 		Addr:           addr,
-		Handler:        a,
+		Handler:        h,
 		ReadTimeout:    time.Minute * 5,
 		WriteTimeout:   time.Minute * 5,
 		MaxHeaderBytes: http.DefaultMaxHeaderBytes,
@@ -140,74 +175,36 @@ func run() error {
 			ServerName:   "mt",
 			Certificates: []tls.Certificate{cert},
 		},
-		TLSNextProto: map[string]func(s *http.Server, conn *tls.Conn, h http.Handler){},
+		// TLSNextProto: map[string]func(s *http.Server, conn *tls.Conn, h http.Handler){},
 	}
-	if useTLS {
+
+	fmt.Printf("\n\nRunning on ")
+	if conf.TLS {
+		fmt.Printf("\x1b[32;4mhttps://%s\x1b[0m\n", addr)
 		return srv.ListenAndServeTLS("", "")
 	}
+	fmt.Printf("\x1b[32;4mhttp://%s\x1b[0m\n", addr)
 	return srv.ListenAndServe()
 }
 
-func login(a *app.App, mw *ginjwt.GinJWTMiddleware) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		raw, ok := c.Get("new-user")
-		if !ok {
-			unauthorized(c, mw, mw.HTTPStatusMessageFunc(ginjwt.ErrMissingAuthenticatorFunc, c))
-			return
-		}
-		u := raw.(*users.User)
-		if u.Hash == nil {
-			unauthorized(c, mw, mw.HTTPStatusMessageFunc(ginjwt.ErrMissingAuthenticatorFunc, c))
-			return
-		}
-
-		token := jwt.New(jwt.GetSigningMethod(mw.SigningAlgorithm))
-		claims := token.Claims.(jwt.MapClaims)
-		if mw.PayloadFunc != nil {
-			for key, value := range mw.PayloadFunc(u) {
-				claims[key] = value
-			}
-		}
-		expire := mw.TimeFunc().Add(mw.Timeout)
-		claims["exp"] = expire.Unix()
-		claims["orig_iat"] = mw.TimeFunc().Unix()
-		tokenString, err := token.SignedString(mw.Key)
-		if err != nil {
-			unauthorized(c, mw, mw.HTTPStatusMessageFunc(ginjwt.ErrFailedTokenCreation, c))
-			return
-		}
-		// set cookie
-		if mw.SendCookie {
-			expireCookie := mw.TimeFunc().Add(mw.CookieMaxAge)
-			maxage := int(expireCookie.Unix() - mw.TimeFunc().Unix())
-			if mw.CookieSameSite != 0 {
-				c.SetSameSite(mw.CookieSameSite)
-			}
-			c.SetCookie(
-				mw.CookieName,
-				tokenString,
-				maxage,
-				"/",
-				mw.CookieDomain,
-				mw.SecureCookie,
-				mw.CookieHTTPOnly,
-			)
-		}
-
-		mw.LoginResponse(c, http.StatusOK, tokenString, expire)
-		// c.JSON(http.StatusOK, gin.H{
-		// 	"user": u,
-		// 	"jwt": gin.H{
-		// 		"code":   http.StatusOK,
-		// 		"token":  token,
-		// 		"expire": expire.Format(time.RFC3339),
-		// 	},
-		// })
-	}
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
 func unauthorized(c *gin.Context, mw *ginjwt.GinJWTMiddleware, msg string) {
 	c.Header("WWW-Authenticate", "JWT realm="+mw.Realm)
 	mw.Unauthorized(c, 400, msg)
 	c.Abort()
+}
+
+func cors(c *gin.Context) {
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.Header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+	c.Header("Access-Control-Allow-Headers", strings.Join([]string{
+		"Content-Type",
+		"Authorization",
+	}, ","))
+	c.Next()
 }
