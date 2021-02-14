@@ -1,3 +1,5 @@
 # min   hour    day     month   weekday command
-*/2     *       *       *       *       /app/bin/mtupdate -db -no-enrollment -password=$POSTGRES_PASSWORD -host=localhost -port=$POSTGRES_PORT 2>&1 >> /app/cron.log
-*/5    *       *       *       *       /app/bin/mtupdate -db -enrollment-only -password=$POSTGRES_PASSWORD -host=localhost 2>&1 >>/app/cron.log
+*/2    *       *       *       *       /app/bin/mtupdate -year 2021 -term spring -db -no-enrollment -password=$POSTGRES_PASSWORD -host=localhost -port=$POSTGRES_PORT 2>&1 >> /app/cron.log
+*/5    *       *       *       *       /app/bin/mtupdate -year 2021 -term spring -db -enrollment-only -password=$POSTGRES_PASSWORD -host=localhost                    2>&1 >>/app/cron.log
+*/2    *       *       *       *       /app/bin/mtupdate -year 2021 -term summer -db -no-enrollment -password=$POSTGRES_PASSWORD -host=localhost -port=$POSTGRES_PORT 2>&1 >> /app/cron.log
+*/5    *       *       *       *       /app/bin/mtupdate -year 2021 -term summer -db -enrollment-only -password=$POSTGRES_PASSWORD -host=localhost                    2>&1 >>/app/cron.log

@@ -20,7 +20,7 @@ db/data/
 /test.sh
 /requests.http
 /.env
-/mt.yml
+#/mt.yml
 *.md
 **/Dockerfile*
 

@@ -149,9 +149,15 @@ something like this.
 ## Configuration
 
 ```yaml
+# mt.yml
 host: 0.0.0.0
 port: 8080
 secret: 'some long string'
+in_memory_rate_store: true
+
+tls: true
+cert: ./mercedtime.com+4.pem
+key: ./mercedtime.com+4-key.pem
 
 db:
   driver: 'postgres'

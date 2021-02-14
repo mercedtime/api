@@ -17,6 +17,7 @@ WORKDIR /app
 
 RUN rm /etc/crontabs/root
 COPY --from=builder /app/src/db/cron/root /etc/crontabs/root
+COPY --from=builder /app/src/mt.yml /etc/mt.yml
 RUN chown root /etc/crontabs/root
 RUN chmod 0600 /etc/crontabs/root
 

@@ -11,14 +11,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mercedtime/api/app"
+	"github.com/mercedtime/api/catalog"
+	"github.com/mercedtime/api/db/models"
+
 	"github.com/agnivade/levenshtein"
 	"github.com/harrybrwn/config"
 	"github.com/harrybrwn/edu/school/ucmerced/ucm"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
-	"github.com/mercedtime/api/app"
-	"github.com/mercedtime/api/catalog"
-	"github.com/mercedtime/api/db/models"
 	"github.com/pkg/errors"
 )
 
@@ -29,6 +30,9 @@ var termcodeMap = map[string]int{
 }
 
 type updateConfig struct {
+	Host string `config:"host"`
+	Port int    `config:"port"`
+
 	Database app.DatabaseConfig `config:"db" yaml:"db"`
 	Year     int                `config:"year"`
 	Term     string             `config:"term"`
@@ -71,6 +75,7 @@ func run() error {
 	config.SetFilename("mt.yml")
 	config.SetType("yml")
 	config.AddPath(".")
+	config.AddPath("/etc")
 	config.SetConfig(&conf)
 
 	if err := config.InitDefaults(); err != nil {
@@ -173,6 +178,8 @@ type Tables struct {
 	aux        []*models.LabDisc
 	exam       []*models.Exam
 	instructor map[string]*models.Instructor
+
+	config updateConfig
 }
 
 // PopulateTables will get table data
@@ -182,6 +189,7 @@ func PopulateTables(sch ucm.Schedule, conf *updateConfig) (*Tables, error) {
 		tab     = &Tables{
 			instructor: make(map[string]*models.Instructor),
 			exam:       make([]*models.Exam, 0, 128), // 128 is arbitrary
+			config:     *conf,
 		}
 		err error
 	)
@@ -243,8 +251,21 @@ func updates(w io.Writer, db *sqlx.DB, tab *Tables) (err error) {
 	// CRNs because other tables depend on this table
 	// via foreign key constrains.
 
-	if err = updateCourseTable(db, tab.course); err != nil {
+	updates, err := updateCourseTable(db, tab.course)
+	if err != nil {
 		return errors.Wrap(err, "update course failed")
+	}
+	if len(updates) > 0 {
+		println()
+		for _, u := range updates {
+			fmt.Printf("%+v\n", u)
+		}
+		resp, err := postUpdatedCourses(tab.config, updates)
+		if err != nil {
+			log.Println("could not send updates to server:", err)
+		} else {
+			resp.Body.Close()
+		}
 	}
 	fmt.Fprintf(w, "%v ok|lectures:", time.Now().Sub(t))
 	t = time.Now()
@@ -265,12 +286,14 @@ func updates(w io.Writer, db *sqlx.DB, tab *Tables) (err error) {
 	fmt.Fprintf(w, "%v ok|exams:", time.Now().Sub(t))
 	t = time.Now()
 
-	err = updateExamTable(db.DB, tab.exam)
-	if err != nil {
-		log.Println("Error update exam table:", err)
-		return err
+	if len(tab.exam) > 0 {
+		err = updateExamTable(db.DB, tab.exam)
+		if err != nil {
+			log.Println("Error update exam table:", err)
+			return err
+		}
+		fmt.Fprintf(w, "%v ok|", time.Now().Sub(t))
 	}
-	fmt.Fprintf(w, "%v ok|", time.Now().Sub(t))
 	t = time.Now()
 	return nil
 }

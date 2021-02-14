@@ -4,11 +4,18 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"log"
+	"net"
+	"net/http"
+	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/harrybrwn/edu/school/ucmerced/ucm"
@@ -113,14 +120,21 @@ func printQueryRows(rows *sql.Rows) error {
 
 func updatequery(data genquery) (string, error) {
 	var buf bytes.Buffer
-	tmpl, err := template.New(
-		"sql-update-gen",
-	).Funcs(tmplFuncs).Parse(updateTmpl)
-	if err != nil {
+	if err := execUpdateQueryGen(updateTmpl, data, &buf); err != nil {
 		return "", err
 	}
-	err = tmpl.Execute(&buf, data)
-	return buf.String(), err
+	return buf.String(), nil
+}
+
+func execUpdateQueryGen(templStr string, data genquery, buf *bytes.Buffer) error {
+	tmpl, err := template.New(
+		"sql-update-gen",
+	).Funcs(tmplFuncs).Parse(templStr)
+	if err != nil {
+		return err
+	}
+	err = tmpl.Execute(buf, data)
+	return err
 }
 
 func insertNew(target, tmp string, tx *sql.Tx, cols ...string) error {
@@ -242,7 +256,7 @@ func recordHistoricalEnrollment(db *sql.DB, year, termcode int, crs []*ucm.Cours
 	return err
 }
 
-func updateCourseTable(db *sqlx.DB, courses []*catalog.Entry) (err error) {
+func updateCourseTable(db *sqlx.DB, courses []*catalog.Entry) (updates []*catalog.Entry, err error) {
 	var (
 		target   = "course"
 		tmpTable = "_tmp_" + target
@@ -251,11 +265,11 @@ func updateCourseTable(db *sqlx.DB, courses []*catalog.Entry) (err error) {
 		Isolation: sql.LevelDefault, ReadOnly: false,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	tmp, err := newtmptable(target, tx.Tx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() {
 		if e := tmp.close(); e != nil {
@@ -274,7 +288,7 @@ func updateCourseTable(db *sqlx.DB, courses []*catalog.Entry) (err error) {
 
 	stmt, err := tx.Prepare(pq.CopyIn(tmpTable, tmpTableCols...))
 	if err != nil {
-		return errors.Wrap(err, "could not create prepared statment")
+		return nil, errors.Wrap(err, "could not create prepared statment")
 	}
 	for _, c := range courses {
 		if c.Description == "" {
@@ -286,30 +300,73 @@ func updateCourseTable(db *sqlx.DB, courses []*catalog.Entry) (err error) {
 			c.Remaining, c.Year, c.TermID)
 		if err != nil {
 			stmt.Close()
-			return errors.Wrap(err, "could not insert into temp course table")
+			return nil, errors.Wrap(err, "could not insert into temp course table")
 		}
 	}
 	if err = stmt.Close(); err != nil {
-		return err
+		return nil, err
 	}
 	if err = insertNew(target, tmpTable, tx.Tx, tmpTableCols...); err != nil {
-		return errors.Wrap(err, "could not insert new values from tmp course table")
+		return nil, errors.Wrap(err, "could not insert new values from tmp course table")
 	}
 
+	var (
+		buf      bytes.Buffer
+		queryGen = genquery{
+			Target:     target,
+			Tmp:        tmpTable,
+			SetUpdated: true,
+			Vars:       cols,
+		}
+	)
+
+	if err = execUpdateQueryGen(`
+		SELECT
+			crn,
+			subject,
+			course_num,
+			type,
+			title,
+			units,
+			days,
+			description,
+			capacity,
+			enrolled,
+			remaining,
+			year,
+			term_id
+		FROM "{{ .Tmp }}" tmp {{ $n := sub (len .Vars) 1 }}
+		WHERE NOT EXISTS (
+			SELECT * FROM "{{ .Target }}" target
+			WHERE
+				tmp.crn = target.crn AND
+				{{- range $i, $v := .Vars }}
+				tmp.{{ $v }} = target.{{ . }}{{if ne $i $n }} AND{{end}}
+				{{- end }}
+		)`, queryGen, &buf); err != nil {
+		return nil, err
+	}
+
+	updates = make([]*catalog.Entry, 0)
+	if err = tx.Select(&updates, buf.String()); err != nil {
+		return nil, errors.Wrap(err, "could not select updated rows")
+	}
+	for _, u := range updates {
+		u.UpdatedAt = time.Now()
+	}
+	buf.Reset()
+
 	var q string
-	q, err = updatequery(genquery{
-		Target:     target,
-		Tmp:        tmpTable,
-		SetUpdated: true,
-		Vars:       cols,
-	})
+	err = execUpdateQueryGen(updateTmpl, queryGen, &buf)
+	// q, err = updatequery(queryGen)
 	if err != nil {
-		return errors.Wrap(err, "could not generate update query")
+		return nil, errors.Wrap(err, "could not generate update query")
 	}
+	q = buf.String()
 	if _, err = tx.Exec(q); err != nil {
-		return errors.Wrap(err, "could not perform updates from temp course table")
+		return nil, errors.Wrap(err, "could not perform updates from temp course table")
 	}
-	return nil
+	return updates, nil
 }
 
 func updateLectureTable(
@@ -510,4 +567,29 @@ func updateExamTable(db *sql.DB, exams []*models.Exam) error {
 		return err
 	}
 	return err
+}
+
+func postUpdatedCourses(conf updateConfig, updates []*catalog.Entry) (*http.Response, error) {
+	var (
+		c   = http.Client{Timeout: time.Second * 5}
+		buf bytes.Buffer
+	)
+
+	if err := json.NewEncoder(&buf).Encode(updates); err != nil {
+		return nil, err
+	}
+	return c.Do(&http.Request{
+		Proto:  "HTTP/1.1",
+		Method: "POST",
+		URL: &url.URL{
+			Scheme: "http",
+			Host:   net.JoinHostPort(conf.Host, strconv.Itoa(conf.Port)),
+			Path:   "/api/v1/update",
+		},
+		Body:          ioutil.NopCloser(&buf),
+		ContentLength: int64(buf.Len()),
+		Header: http.Header{
+			"Content-Type": {"application/json"},
+		},
+	})
 }

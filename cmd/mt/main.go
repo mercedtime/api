@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -116,41 +115,6 @@ func run() error {
 		c.JSON(200, map[string]interface{}{
 			"success": "yay",
 		})
-	})
-
-	r.GET("/ws", func(c *gin.Context) {
-		println("got ws req")
-		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		for {
-			typ, r, err := conn.NextReader()
-			if err != nil {
-				log.Println(err)
-				continue
-			}
-			w, err := conn.NextWriter(typ)
-			if err != nil {
-				log.Println(err)
-				continue
-			}
-			w.Write([]byte("you said: \""))
-			if _, err = io.Copy(w, r); err != nil {
-				log.Println(err)
-				continue
-			}
-			w.Write([]byte("\""))
-			if err = w.Close(); err != nil {
-				log.Println(err)
-			}
-			conn.Close()
-			return
-		}
-	})
-	r.GET("/echo", func(c *gin.Context) {
-		fmt.Fprintf(c.Writer, "hello there")
 	})
 
 	logrus.Debug("testing logger")

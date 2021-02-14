@@ -35,6 +35,10 @@ func (a *App) RegisterRoutes(g *gin.RouterGroup) {
 	g.GET("/instructor/:id", instructorFromID(a))
 	g.GET("/instructor/:id/courses", instructorCourses(a.DB))
 	g.GET("/unauthorized", a.Protected, func(c *gin.Context) { c.Status(200) }) // for testing should always be unauthorized
+
+	ch := make(chan interface{})
+	g.GET("/updates", a.wsSub(ch))
+	g.POST("/update", a.wsPublisher(ch))
 }
 
 // LectureGroup returns the router group for all the lecture routes.
